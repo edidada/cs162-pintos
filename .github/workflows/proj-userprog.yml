@@ -1,0 +1,33 @@
+name: CS162 Project1 Userprog
+on:
+  push:
+    branches: [edidada/proj-userprog]
+  workflow_dispatch:
+jobs:
+  arguments:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-multilib clang qemu-system-x86
+      - run: |
+          set -euo pipefail
+          mkdir evidence
+          git rev-parse HEAD > evidence/commit.txt
+          export PATH="$PWD/src/utils:$PATH"
+          chmod +x src/utils/pintos*
+          make -C src/utils setitimer-helper
+          make -C src/userprog > evidence/build.txt 2>&1
+          cd src/userprog/build
+          for name in do-nothing args-none args-single args-multiple args-many args-dbl-space stack-align-0 stack-align-1 stack-align-2 stack-align-3 stack-align-4 practice; do
+            make "tests/userprog/$name.result"
+            grep -qx PASS "tests/userprog/$name.result"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: userprog-arguments-evidence
+          path: |
+            evidence/
+            src/userprog/build/tests/userprog/*.output
+            src/userprog/build/tests/userprog/*.result

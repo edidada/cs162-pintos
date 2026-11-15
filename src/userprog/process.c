@@ -23,6 +23,7 @@
 static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
+static bool argument_stack(void **esp, char **argv, int argc);
 static bool load(const char* file_name, void (**eip)(void), void** esp);
 bool setup_thread(void (**eip)(void), void** esp);
 
@@ -54,6 +55,7 @@ pid_t process_execute(const char* file_name) {
   char* fn_copy;
   tid_t tid;
 
+  if (strlen(file_name) >= PGSIZE) return TID_ERROR;
   sema_init(&temporary, 0);
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -63,7 +65,13 @@ pid_t process_execute(const char* file_name) {
   strlcpy(fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file_name, PRI_DEFAULT, start_process, fn_copy);
+  char name[16];
+  const char *first = file_name;
+  while (*first == ' ') ++first;
+  size_t n = 0;
+  while (first[n] && first[n] != ' ' && n < sizeof name - 1) { name[n] = first[n]; ++n; }
+  name[n] = 0;
+  tid = thread_create(name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page(fn_copy);
   return tid;
@@ -74,6 +82,17 @@ pid_t process_execute(const char* file_name) {
 static void start_process(void* file_name_) {
   char* file_name = (char*)file_name_;
   struct thread* t = thread_current();
+  size_t slots = strlen(file_name) + 1;
+  char **argv = malloc(slots * sizeof *argv);
+  int argc = 0;
+  char *save;
+  if (argv) {
+    for (char *word = strtok_r(file_name, " ", &save); word;
+         word = strtok_r(NULL, " ", &save)) argv[argc++] = word;
+  }
+  if (!argv || !argc) {
+    free(argv); palloc_free_page(file_name); sema_up(&temporary); thread_exit();
+  }
   struct intr_frame if_;
   bool success, pcb_success;
 
@@ -99,7 +118,8 @@ static void start_process(void* file_name_) {
     if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
     if_.cs = SEL_UCSEG;
     if_.eflags = FLAG_IF | FLAG_MBS;
-    success = load(file_name, &if_.eip, &if_.esp);
+    success = load(argv[0], &if_.eip, &if_.esp);
+    if (success) success = argument_stack(&if_.esp, argv, argc);
   }
 
   /* Handle failure with succesful PCB malloc. Must free the PCB */
@@ -113,6 +133,7 @@ static void start_process(void* file_name_) {
   }
 
   /* Clean up. Exit on failure or jump to userspace */
+  free(argv);
   palloc_free_page(file_name);
   if (!success) {
     sema_up(&temporary);
@@ -478,6 +499,27 @@ static bool setup_stack(void** esp) {
       palloc_free_page(kpage);
   }
   return success;
+}
+
+/* Build cdecl entry frame with esp % 16 == 12, and a trailing argv NULL. */
+static bool argument_stack(void **esp, char **argv, int argc) {
+  size_t strings = 0;
+  for (int i = 0; i < argc; ++i) strings += strlen(argv[i]) + 1;
+  size_t words = ((size_t)argc + 4) * sizeof(uint32_t);
+  if (strings + words + 15 > PGSIZE) return false;
+  uint8_t *top = PHYS_BASE;
+  for (int i = argc - 1; i >= 0; --i) {
+    size_t length = strlen(argv[i]) + 1;
+    top -= length; memcpy(top, argv[i], length); argv[i] = (char *)top;
+  }
+  while (((uintptr_t)top - words) % 16 != 12) *--top = 0;
+  top -= 4; *(uint32_t *)top = 0;
+  for (int i = argc - 1; i >= 0; --i) { top -= 4; *(char **)top = argv[i]; }
+  char **user_argv = (char **)top;
+  top -= 4; *(char ***)top = user_argv;
+  top -= 4; *(int *)top = argc;
+  top -= 4; *(uint32_t *)top = 0;
+  *esp = top; return true;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel
