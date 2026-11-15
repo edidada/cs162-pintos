@@ -27,6 +27,17 @@ jobs:
           grep -q 'LIFECYCLE STRESS PASSED' ../../../evidence/lifecycle.txt
           grep -q 'life-parent: exit(0)' ../../../evidence/lifecycle.txt
           test "$(grep -c 'life-child: exit(9999)' ../../../evidence/lifecycle.txt)" -eq 20
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path('../../../evidence/lifecycle.txt').read_text()
+          events = [(m.start(), int(m[1])) for m in re.finditer(r'life-child: exit\((\d+)\)', text)]
+          parents = [offset for offset, code in events if code not in (73, 9999)]
+          leaves = [offset for offset, code in events if code == 9999]
+          assert len(parents) == len(leaves) == 20
+          assert all(parent < leaf for parent, leaf in zip(parents, leaves))
+          print('All 20 middle parents exited before their orphan leaf completed')
+          PY
       - uses: actions/upload-artifact@v4
         if: always()
         with:

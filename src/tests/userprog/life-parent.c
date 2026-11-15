@@ -8,7 +8,7 @@ int main(void) {
     for(int i=7;i>=0;--i) { ASSERT(wait(children[i])==73); ASSERT(wait(children[i])==-1); }
     int parent=exec("life-child middle"); ASSERT(parent>0);
     int grandchild=wait(parent);ASSERT(grandchild>0);ASSERT(wait(grandchild)==-1);
-    for(int i=0;i<100000;++i) ASSERT(practice(161)==162);
+    for(int i=0;i<1500000;++i) ASSERT(practice(161)==162);
     ASSERT(exec("missing-life")==-1);
   }
   int last=exec("life-child normal");ASSERT(last>0);ASSERT(wait(last)==73);
