@@ -575,7 +575,8 @@ static bool argument_stack(void **esp, char **argv, int argc) {
   size_t strings = 0;
   for (int i = 0; i < argc; ++i) strings += strlen(argv[i]) + 1;
   size_t words = ((size_t)argc + 4) * sizeof(uint32_t);
-  if (strings + words + 15 > PGSIZE) return false;
+  size_t padding = ((uintptr_t)PHYS_BASE - strings - words - 12) % 16;
+  if (strings + words + padding > PGSIZE) return false;
   uint8_t *top = PHYS_BASE;
   for (int i = argc - 1; i >= 0; --i) {
     size_t length = strlen(argv[i]) + 1;

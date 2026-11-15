@@ -24,6 +24,11 @@ jobs:
             grep -qx PASS "tests/userprog/$name.result"
           done
           make check 2>&1 | tee ../../../evidence/full-suite.txt
+          for name in ro-target fork-keep; do
+            make "tests/userprog/$name.output"
+            perl -I../.. "../../tests/userprog/$name.ck" "tests/userprog/$name" "tests/userprog/$name.result"
+            grep -qx PASS "tests/userprog/$name.result"
+          done
           pintos -v -k -T 120 --qemu --filesys-size=2 -p tests/userprog/life-parent -a life-parent -p tests/userprog/life-child -a life-child -- -q -f run life-parent > ../../../evidence/lifecycle.txt 2>&1
           grep -q 'LIFECYCLE STRESS PASSED' ../../../evidence/lifecycle.txt
           grep -q 'life-parent: exit(0)' ../../../evidence/lifecycle.txt

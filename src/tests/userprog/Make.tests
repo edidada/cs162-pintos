@@ -170,3 +170,10 @@ tests/userprog/fork-file_PUTFILES += tests/userprog/sample.txt
 tests/userprog_PROGS += tests/userprog/life-parent tests/userprog/life-child
 tests/userprog/life-parent_SRC = tests/userprog/life-parent.c
 tests/userprog/life-child_SRC = tests/userprog/life-child.c
+
+# Extra report tests; preserve the original configured TESTS list.
+tests/userprog_PROGS += tests/userprog/ro-target tests/userprog/fork-keep
+tests/userprog/ro-target_SRC = tests/userprog/ro-target.c
+tests/userprog/fork-keep_SRC = tests/userprog/fork-keep.c
+tests/userprog/ro-target.output: tests/userprog/ro-target
+tests/userprog/fork-keep.output: tests/userprog/fork-keep

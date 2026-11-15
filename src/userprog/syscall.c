@@ -84,7 +84,7 @@ static void syscall_handler(struct intr_frame* f) {
       check_buffer(args, code == SYS_CREATE ? 12 : 8);
       const char *name = (const char *)args[1]; check_string(name);
       lock_acquire(&process_fs_lock);
-      if (code == SYS_CREATE) f->eax = filesys_create(name, args[2]);
+      if (code == SYS_CREATE) f->eax = args[2] <= INT_MAX && filesys_create(name, args[2]);
       else if (code == SYS_REMOVE) f->eax = filesys_remove(name);
       else {
         struct file *file = filesys_open(name);
