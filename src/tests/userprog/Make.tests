@@ -177,3 +177,6 @@ tests/userprog/ro-target_SRC = tests/userprog/ro-target.c
 tests/userprog/fork-keep_SRC = tests/userprog/fork-keep.c
 tests/userprog/ro-target.output: tests/userprog/ro-target
 tests/userprog/fork-keep.output: tests/userprog/fork-keep
+
+tests/userprog/ro-target.output: TEST = tests/userprog/ro-target
+tests/userprog/fork-keep.output: TEST = tests/userprog/fork-keep
