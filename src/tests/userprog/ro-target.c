@@ -3,6 +3,7 @@
 #include <debug.h>
 int main(void) {
   ASSERT(!create("too-large",0xffffffffu));
+  ASSERT(!create("near-limit",0x7fffffffu));
   ASSERT(create("readonly",1));
   int fd=open("readonly");ASSERT(fd>=2);
   puts("ro-target: before read into code");

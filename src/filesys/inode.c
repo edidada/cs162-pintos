@@ -21,7 +21,7 @@ struct inode_disk {
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
-static inline size_t bytes_to_sectors(off_t size) { return DIV_ROUND_UP(size, BLOCK_SECTOR_SIZE); }
+static inline size_t bytes_to_sectors(off_t size) { return DIV_ROUND_UP((uint32_t)size, BLOCK_SECTOR_SIZE); }
 
 /* In-memory inode. */
 struct inode {

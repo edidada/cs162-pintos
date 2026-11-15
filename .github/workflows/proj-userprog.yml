@@ -52,3 +52,24 @@ jobs:
             evidence/
             src/userprog/build/tests/**/*.output
             src/userprog/build/tests/**/*.result
+
+  format-export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y clang-format-18
+          mkdir formatting
+          clang-format-18 --version > formatting/version.txt
+          git diff --name-only 8baa8f6f9f5e3071b51b28c1a81f80150128af56 -- '*.c' '*.h' > formatting/files.txt
+          while read -r file; do clang-format-18 -i -style=file "$file"; done < formatting/files.txt
+          tar -cf formatting/formatted.tar -T formatting/files.txt
+          git diff --stat > formatting/stat.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: userprog-formatted-sources
+          path: formatting/
