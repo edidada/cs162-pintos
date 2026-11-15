@@ -222,3 +222,8 @@ static void invalidate_pagedir(uint32_t* pd) {
     pagedir_activate(pd);
   }
 }
+
+bool pagedir_is_writable(uint32_t *pd, const void *address) {
+  uint32_t *pte = lookup_page(pd, address, false);
+  return pte != NULL && (*pte & PTE_P) && (*pte & PTE_W);
+}

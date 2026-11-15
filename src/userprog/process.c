@@ -57,7 +57,7 @@ void userprog_init(void) {
      can come at any time and activate our pagedir */
   t->pcb = calloc(sizeof(struct process), 1);
   success = t->pcb != NULL;
-  if (success) { list_init(&t->pcb->children); t->pcb->exit_status = -1; }
+  if (success) { list_init(&t->pcb->children); list_init(&t->pcb->descriptors); t->pcb->next_fd = 2; t->pcb->exit_status = -1; }
   lock_init(&process_fs_lock);
 
   /* Kill the kernel if we did not succeed */
@@ -107,7 +107,7 @@ static void start_process(void *arg) {
   struct process *pcb = calloc(1, sizeof *pcb);
   bool success = pcb && argv && argc;
   if (pcb) {
-    list_init(&pcb->children); pcb->exit_status = -1; pcb->main_thread = t;
+    list_init(&pcb->children); list_init(&pcb->descriptors); pcb->next_fd = 2; pcb->exit_status = -1; pcb->main_thread = t;
     strlcpy(pcb->process_name, t->name, sizeof pcb->process_name);
     t->pcb = pcb;
   }
@@ -165,6 +165,13 @@ void process_exit(void) {
     thread_exit(); NOT_REACHED();
   }
   int status = cur->pcb->exit_status;
+  lock_acquire(&process_fs_lock);
+  while (!list_empty(&cur->pcb->descriptors)) {
+    struct descriptor *d = list_entry(list_pop_front(&cur->pcb->descriptors), struct descriptor, elem);
+    file_close(d->file); free(d);
+  }
+  file_close(cur->pcb->executable);
+  lock_release(&process_fs_lock);
   printf("%s: exit(%d)\n", cur->pcb->process_name, status);
   while (!list_empty(&cur->pcb->children)) {
     struct child_status *child = list_entry(list_pop_front(&cur->pcb->children), struct child_status, elem);
@@ -379,7 +386,10 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
 
 done:
   /* We arrive here whether the load is successful or not. */
-  file_close(file);
+  if (success) {
+    file_deny_write(file);
+    t->pcb->executable = file;
+  } else file_close(file);
   return success;
 }
 
