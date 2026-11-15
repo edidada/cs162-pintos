@@ -227,3 +227,21 @@ bool pagedir_is_writable(uint32_t *pd, const void *address) {
   uint32_t *pte = lookup_page(pd, address, false);
   return pte != NULL && (*pte & PTE_P) && (*pte & PTE_W);
 }
+
+bool pagedir_copy(uint32_t *target, uint32_t *source) {
+  for (unsigned directory = 0; directory < pd_no(PHYS_BASE); ++directory) {
+    if (!(source[directory] & PTE_P)) continue;
+    uint32_t *table = pde_get_pt(source[directory]);
+    for (unsigned index = 0; index < PGSIZE / sizeof *table; ++index) {
+      if (!(table[index] & PTE_P)) continue;
+      void *page = palloc_get_page(PAL_USER);
+      if (!page) return false;
+      memcpy(page, pte_get_page(table[index]), PGSIZE);
+      void *address = (void *)((directory << PDSHIFT) | (index << PTSHIFT));
+      if (!pagedir_set_page(target, address, page, (table[index] & PTE_W) != 0)) {
+        palloc_free_page(page); return false;
+      }
+    }
+  }
+  return true;
+}

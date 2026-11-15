@@ -7,6 +7,7 @@
 struct file {
   struct inode* inode; /* File's inode. */
   off_t pos;           /* Current position. */
+  unsigned references;
   bool deny_write;     /* Has file_deny_write() been called? */
 };
 
@@ -17,6 +18,7 @@ struct file* file_open(struct inode* inode) {
   struct file* file = calloc(1, sizeof *file);
   if (inode != NULL && file != NULL) {
     file->inode = inode;
+    file->references = 1;
     file->pos = 0;
     file->deny_write = false;
     return file;
@@ -35,7 +37,7 @@ struct file* file_reopen(struct file* file) {
 
 /* Closes FILE. */
 void file_close(struct file* file) {
-  if (file != NULL) {
+  if (file != NULL && --file->references == 0) {
     file_allow_write(file);
     inode_close(file->inode);
     free(file);
@@ -131,4 +133,10 @@ void file_seek(struct file* file, off_t new_pos) {
 off_t file_tell(struct file* file) {
   ASSERT(file != NULL);
   return file->pos;
+}
+
+/* Called with the Project1 filesystem lock held. Shares offset and deny state. */
+struct file *file_share(struct file *file) {
+  if (file) ++file->references;
+  return file;
 }

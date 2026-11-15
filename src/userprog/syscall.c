@@ -74,6 +74,7 @@ static void syscall_handler(struct intr_frame* f) {
       f->eax = length == PGSIZE ? -1 : process_execute(command);
       break;
     }
+    case SYS_FORK: f->eax = process_fork(f); break;
     case SYS_WAIT: check_buffer(args, 8); f->eax = process_wait((pid_t)args[1]); break;
     case SYS_PRACTICE: check_buffer(args, 8); f->eax = args[1] + 1u; break;
     case SYS_CREATE:

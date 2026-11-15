@@ -129,6 +129,65 @@ static void start_process(void *arg) {
   NOT_REACHED();
 }
 
+struct fork_launch {
+  struct process *parent;
+  struct child_status *child;
+  struct intr_frame frame;
+};
+static void start_fork(void *arg) {
+  struct fork_launch *launch = arg;
+  struct thread *thread = thread_current();
+  thread->child_status = launch->child;
+  struct process *parent = launch->parent;
+  struct process *pcb = calloc(1, sizeof *pcb);
+  bool success = pcb != NULL;
+  if (pcb) {
+    list_init(&pcb->children); list_init(&pcb->descriptors);
+    pcb->main_thread = thread; pcb->exit_status = -1; pcb->next_fd = parent->next_fd;
+    strlcpy(pcb->process_name, parent->process_name, sizeof pcb->process_name);
+    thread->pcb = pcb;
+    pcb->pagedir = pagedir_create();
+    success = pcb->pagedir != NULL;
+    if (success) { process_activate(); success = pagedir_copy(pcb->pagedir, parent->pagedir); }
+    if (success) {
+      lock_acquire(&process_fs_lock);
+      pcb->executable = file_share(parent->executable);
+      for (struct list_elem *e = list_begin(&parent->descriptors);
+           e != list_end(&parent->descriptors); e = list_next(e)) {
+        struct descriptor *old = list_entry(e, struct descriptor, elem);
+        struct descriptor *copy = malloc(sizeof *copy);
+        if (!copy) { success = false; break; }
+        copy->fd = old->fd; copy->file = file_share(old->file);
+        list_push_back(&pcb->descriptors, &copy->elem);
+      }
+      lock_release(&process_fs_lock);
+    }
+  }
+  struct intr_frame frame = launch->frame;
+  frame.eax = 0;
+  launch->child->load_ok = success;
+  sema_up(&launch->child->loaded);
+  free(launch);
+  if (!success) process_exit();
+  asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&frame) : "memory");
+  NOT_REACHED();
+}
+pid_t process_fork(struct intr_frame *frame) {
+  struct child_status *child = calloc(1, sizeof *child);
+  struct fork_launch *launch = malloc(sizeof *launch);
+  if (!child || !launch) { free(child); free(launch); return -1; }
+  sema_init(&child->loaded, 0); sema_init(&child->exited, 0);
+  lock_init(&child->lock); child->refs = 2; child->status = -1;
+  launch->parent = thread_current()->pcb; launch->child = child; launch->frame = *frame;
+  pid_t pid = thread_create(launch->parent->process_name, PRI_DEFAULT, start_fork, launch);
+  if (pid == TID_ERROR) { free(launch); free(child); return -1; }
+  child->pid = pid;
+  list_push_back(&thread_current()->pcb->children, &child->elem);
+  sema_down(&child->loaded);
+  if (!child->load_ok) { list_remove(&child->elem); release_child(child); return -1; }
+  return pid;
+}
+
 /* Waits for process with PID child_pid to die and returns its exit status.
    If it was terminated by the kernel (i.e. killed due to an
    exception), returns -1.  If child_pid is invalid or if it was not a
