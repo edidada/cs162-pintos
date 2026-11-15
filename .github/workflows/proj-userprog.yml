@@ -23,6 +23,10 @@ jobs:
             make "tests/userprog/$name.result"
             grep -qx PASS "tests/userprog/$name.result"
           done
+          pintos -v -k -T 120 --qemu --filesys-size=2 -p tests/userprog/life-parent -a life-parent -p tests/userprog/life-child -a life-child -- -q -f run life-parent > ../../../evidence/lifecycle.txt 2>&1
+          grep -q 'LIFECYCLE STRESS PASSED' ../../../evidence/lifecycle.txt
+          grep -q 'life-parent: exit(0)' ../../../evidence/lifecycle.txt
+          test "$(grep -c 'life-child: exit(9999)' ../../../evidence/lifecycle.txt)" -eq 20
       - uses: actions/upload-artifact@v4
         if: always()
         with:

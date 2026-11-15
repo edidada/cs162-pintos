@@ -166,3 +166,7 @@ tests/userprog/rox-child_PUTFILES += tests/userprog/child-rox
 tests/userprog/rox-multichild_PUTFILES += tests/userprog/child-rox
 tests/userprog/fork-tree_PUTFILES += tests/userprog/fork-help
 tests/userprog/fork-file_PUTFILES += tests/userprog/sample.txt
+# Independent lifecycle stress fixtures, outside the original grading list.
+tests/userprog_PROGS += tests/userprog/life-parent tests/userprog/life-child
+tests/userprog/life-parent_SRC = tests/userprog/life-parent.c
+tests/userprog/life-child_SRC = tests/userprog/life-child.c
