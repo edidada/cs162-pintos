@@ -13,7 +13,7 @@ static void syscall_handler(struct intr_frame*);
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
 
 static void terminate(int status) {
-  printf("%s: exit(%d)\n", thread_current()->pcb->process_name, status);
+  thread_current()->pcb->exit_status = status;
   process_exit();
 }
 static void check_buffer(const void *data, size_t size) {
@@ -34,6 +34,18 @@ static void syscall_handler(struct intr_frame* f) {
   switch (args[0]) {
     case SYS_HALT: shutdown_power_off(); break;
     case SYS_EXIT: check_buffer(args, 8); terminate((int)args[1]); break;
+    case SYS_EXEC: {
+      check_buffer(args, 8);
+      const char *command = (const char *)args[1];
+      size_t length;
+      for (length = 0; length < PGSIZE; ++length) {
+        check_buffer(command + length, 1);
+        if (!command[length]) break;
+      }
+      f->eax = length == PGSIZE ? -1 : process_execute(command);
+      break;
+    }
+    case SYS_WAIT: check_buffer(args, 8); f->eax = process_wait((pid_t)args[1]); break;
     case SYS_PRACTICE: check_buffer(args, 8); f->eax = args[1] + 1u; break;
     case SYS_WRITE:
       check_buffer(args, 16);

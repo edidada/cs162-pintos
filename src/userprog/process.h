@@ -3,6 +3,8 @@
 
 #include "threads/thread.h"
 #include <stdint.h>
+#include "threads/synch.h"
+#include <list.h>
 
 // At most 8MB can be allocated to the stack
 // These defines will be used in Project 2: Multithreading
@@ -22,7 +24,12 @@ typedef void (*stub_fun)(pthread_fun, void*);
    PCB from the TCB. All TCBs in a process will have a pointer
    to the PCB, and the PCB will have a pointer to the main thread
    of the process, which is `special`. */
+struct child_status;
+extern struct lock process_fs_lock;
+
 struct process {
+  struct list children;
+  int exit_status;
   /* Owned by process.c. */
   uint32_t* pagedir;          /* Page directory. */
   char process_name[16];      /* Name of the main thread */
