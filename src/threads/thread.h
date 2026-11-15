@@ -18,7 +18,7 @@ enum thread_status {
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
-#define TID_ERROR ((tid_t)-1) /* Error value for tid_t. */
+#define TID_ERROR ((tid_t) - 1) /* Error value for tid_t. */
 
 /* Thread priorities. */
 #define PRI_MIN 0      /* Lowest priority. */
@@ -95,7 +95,7 @@ struct thread {
 
 #ifdef USERPROG
   /* Owned by process.c. */
-  struct child_status *child_status;
+  struct child_status* child_status;
   struct process* pcb; /* Process control block if this thread is a userprog */
 #endif
 

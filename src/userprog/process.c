@@ -29,16 +29,20 @@ struct child_status {
   int refs, status;
   bool load_ok;
 };
-struct launch { char *command; struct child_status *child; };
-static void release_child(struct child_status *child) {
+struct launch {
+  char* command;
+  struct child_status* child;
+};
+static void release_child(struct child_status* child) {
   lock_acquire(&child->lock);
   bool last = --child->refs == 0;
   lock_release(&child->lock);
-  if (last) free(child);
+  if (last)
+    free(child);
 }
 static thread_func start_process NO_RETURN;
 static thread_func start_pthread NO_RETURN;
-static bool argument_stack(void **esp, char **argv, int argc);
+static bool argument_stack(void** esp, char** argv, int argc);
 static bool load(const char* file_name, void (**eip)(void), void** esp);
 bool setup_thread(void (**eip)(void), void** esp);
 
@@ -57,7 +61,12 @@ void userprog_init(void) {
      can come at any time and activate our pagedir */
   t->pcb = calloc(sizeof(struct process), 1);
   success = t->pcb != NULL;
-  if (success) { list_init(&t->pcb->children); list_init(&t->pcb->descriptors); t->pcb->next_fd = 2; t->pcb->exit_status = -1; }
+  if (success) {
+    list_init(&t->pcb->children);
+    list_init(&t->pcb->descriptors);
+    t->pcb->next_fd = 2;
+    t->pcb->exit_status = -1;
+  }
   lock_init(&process_fs_lock);
 
   /* Kill the kernel if we did not succeed */
@@ -69,95 +78,137 @@ void userprog_init(void) {
    before process_execute() returns.  Returns the new process's
    process id, or TID_ERROR if the thread cannot be created. */
 pid_t process_execute(const char* command) {
-  if (strlen(command) >= PGSIZE) return TID_ERROR;
-  char *copy = palloc_get_page(0);
-  struct child_status *child = calloc(1, sizeof *child);
-  struct launch *launch = malloc(sizeof *launch);
+  if (strlen(command) >= PGSIZE)
+    return TID_ERROR;
+  char* copy = palloc_get_page(0);
+  struct child_status* child = calloc(1, sizeof *child);
+  struct launch* launch = malloc(sizeof *launch);
   if (!copy || !child || !launch) {
-    if (copy) palloc_free_page(copy);
-    free(child); free(launch); return TID_ERROR;
+    if (copy)
+      palloc_free_page(copy);
+    free(child);
+    free(launch);
+    return TID_ERROR;
   }
   strlcpy(copy, command, PGSIZE);
-  sema_init(&child->loaded, 0); sema_init(&child->exited, 0);
-  lock_init(&child->lock); child->refs = 2; child->status = -1;
-  launch->command = copy; launch->child = child;
-  char name[16]; const char *first = command;
-  while (*first == ' ') ++first;
+  sema_init(&child->loaded, 0);
+  sema_init(&child->exited, 0);
+  lock_init(&child->lock);
+  child->refs = 2;
+  child->status = -1;
+  launch->command = copy;
+  launch->child = child;
+  char name[16];
+  const char* first = command;
+  while (*first == ' ')
+    ++first;
   size_t n = 0;
-  while (first[n] && first[n] != ' ' && n < sizeof name - 1) { name[n] = first[n]; ++n; }
+  while (first[n] && first[n] != ' ' && n < sizeof name - 1) {
+    name[n] = first[n];
+    ++n;
+  }
   name[n] = 0;
   pid_t pid = thread_create(name, PRI_DEFAULT, start_process, launch);
-  if (pid == TID_ERROR) { palloc_free_page(copy); free(launch); free(child); return pid; }
+  if (pid == TID_ERROR) {
+    palloc_free_page(copy);
+    free(launch);
+    free(child);
+    return pid;
+  }
   child->pid = pid;
   list_push_back(&thread_current()->pcb->children, &child->elem);
   sema_down(&child->loaded);
   if (!child->load_ok) {
-    list_remove(&child->elem); release_child(child); return TID_ERROR;
+    list_remove(&child->elem);
+    release_child(child);
+    return TID_ERROR;
   }
   return pid;
 }
-static void start_process(void *arg) {
-  struct launch launch = *(struct launch *)arg; free(arg);
-  struct thread *t = thread_current(); t->child_status = launch.child;
-  char *command = launch.command;
-  char **argv = malloc((strlen(command) + 1) * sizeof *argv);
-  int argc = 0; char *save;
-  if (argv) for (char *word = strtok_r(command, " ", &save); word;
-      word = strtok_r(NULL, " ", &save)) argv[argc++] = word;
-  struct process *pcb = calloc(1, sizeof *pcb);
+static void start_process(void* arg) {
+  struct launch launch = *(struct launch*)arg;
+  free(arg);
+  struct thread* t = thread_current();
+  t->child_status = launch.child;
+  char* command = launch.command;
+  char** argv = malloc((strlen(command) + 1) * sizeof *argv);
+  int argc = 0;
+  char* save;
+  if (argv)
+    for (char* word = strtok_r(command, " ", &save); word; word = strtok_r(NULL, " ", &save))
+      argv[argc++] = word;
+  struct process* pcb = calloc(1, sizeof *pcb);
   bool success = pcb && argv && argc;
   if (pcb) {
-    list_init(&pcb->children); list_init(&pcb->descriptors); pcb->next_fd = 2; pcb->exit_status = -1; pcb->main_thread = t;
+    list_init(&pcb->children);
+    list_init(&pcb->descriptors);
+    pcb->next_fd = 2;
+    pcb->exit_status = -1;
+    pcb->main_thread = t;
     strlcpy(pcb->process_name, t->name, sizeof pcb->process_name);
     t->pcb = pcb;
   }
   struct intr_frame frame;
   memset(&frame, 0, sizeof frame);
   frame.gs = frame.fs = frame.es = frame.ds = frame.ss = SEL_UDSEG;
-  frame.cs = SEL_UCSEG; frame.eflags = FLAG_IF | FLAG_MBS;
+  frame.cs = SEL_UCSEG;
+  frame.eflags = FLAG_IF | FLAG_MBS;
   if (success) {
     lock_acquire(&process_fs_lock);
     success = load(argv[0], &frame.eip, &frame.esp);
     lock_release(&process_fs_lock);
-    if (success) success = argument_stack(&frame.esp, argv, argc);
+    if (success)
+      success = argument_stack(&frame.esp, argv, argc);
   }
-  free(argv); palloc_free_page(command);
+  free(argv);
+  palloc_free_page(command);
   launch.child->load_ok = success;
   sema_up(&launch.child->loaded);
-  if (!success) process_exit();
+  if (!success)
+    process_exit();
   asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&frame) : "memory");
   NOT_REACHED();
 }
 
 struct fork_launch {
-  struct process *parent;
-  struct child_status *child;
+  struct process* parent;
+  struct child_status* child;
   struct intr_frame frame;
 };
-static void start_fork(void *arg) {
-  struct fork_launch *launch = arg;
-  struct thread *thread = thread_current();
+static void start_fork(void* arg) {
+  struct fork_launch* launch = arg;
+  struct thread* thread = thread_current();
   thread->child_status = launch->child;
-  struct process *parent = launch->parent;
-  struct process *pcb = calloc(1, sizeof *pcb);
+  struct process* parent = launch->parent;
+  struct process* pcb = calloc(1, sizeof *pcb);
   bool success = pcb != NULL;
   if (pcb) {
-    list_init(&pcb->children); list_init(&pcb->descriptors);
-    pcb->main_thread = thread; pcb->exit_status = -1; pcb->next_fd = parent->next_fd;
+    list_init(&pcb->children);
+    list_init(&pcb->descriptors);
+    pcb->main_thread = thread;
+    pcb->exit_status = -1;
+    pcb->next_fd = parent->next_fd;
     strlcpy(pcb->process_name, parent->process_name, sizeof pcb->process_name);
     thread->pcb = pcb;
     pcb->pagedir = pagedir_create();
     success = pcb->pagedir != NULL;
-    if (success) { process_activate(); success = pagedir_copy(pcb->pagedir, parent->pagedir); }
+    if (success) {
+      process_activate();
+      success = pagedir_copy(pcb->pagedir, parent->pagedir);
+    }
     if (success) {
       lock_acquire(&process_fs_lock);
       pcb->executable = file_share(parent->executable);
-      for (struct list_elem *e = list_begin(&parent->descriptors);
+      for (struct list_elem* e = list_begin(&parent->descriptors);
            e != list_end(&parent->descriptors); e = list_next(e)) {
-        struct descriptor *old = list_entry(e, struct descriptor, elem);
-        struct descriptor *copy = malloc(sizeof *copy);
-        if (!copy) { success = false; break; }
-        copy->fd = old->fd; copy->file = file_share(old->file);
+        struct descriptor* old = list_entry(e, struct descriptor, elem);
+        struct descriptor* copy = malloc(sizeof *copy);
+        if (!copy) {
+          success = false;
+          break;
+        }
+        copy->fd = old->fd;
+        copy->file = file_share(old->file);
         list_push_back(&pcb->descriptors, &copy->elem);
       }
       lock_release(&process_fs_lock);
@@ -168,23 +219,41 @@ static void start_fork(void *arg) {
   launch->child->load_ok = success;
   sema_up(&launch->child->loaded);
   free(launch);
-  if (!success) process_exit();
+  if (!success)
+    process_exit();
   asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&frame) : "memory");
   NOT_REACHED();
 }
-pid_t process_fork(struct intr_frame *frame) {
-  struct child_status *child = calloc(1, sizeof *child);
-  struct fork_launch *launch = malloc(sizeof *launch);
-  if (!child || !launch) { free(child); free(launch); return -1; }
-  sema_init(&child->loaded, 0); sema_init(&child->exited, 0);
-  lock_init(&child->lock); child->refs = 2; child->status = -1;
-  launch->parent = thread_current()->pcb; launch->child = child; launch->frame = *frame;
+pid_t process_fork(struct intr_frame* frame) {
+  struct child_status* child = calloc(1, sizeof *child);
+  struct fork_launch* launch = malloc(sizeof *launch);
+  if (!child || !launch) {
+    free(child);
+    free(launch);
+    return -1;
+  }
+  sema_init(&child->loaded, 0);
+  sema_init(&child->exited, 0);
+  lock_init(&child->lock);
+  child->refs = 2;
+  child->status = -1;
+  launch->parent = thread_current()->pcb;
+  launch->child = child;
+  launch->frame = *frame;
   pid_t pid = thread_create(launch->parent->process_name, PRI_DEFAULT, start_fork, launch);
-  if (pid == TID_ERROR) { free(launch); free(child); return -1; }
+  if (pid == TID_ERROR) {
+    free(launch);
+    free(child);
+    return -1;
+  }
   child->pid = pid;
   list_push_back(&thread_current()->pcb->children, &child->elem);
   sema_down(&child->loaded);
-  if (!child->load_ok) { list_remove(&child->elem); release_child(child); return -1; }
+  if (!child->load_ok) {
+    list_remove(&child->elem);
+    release_child(child);
+    return -1;
+  }
   return pid;
 }
 
@@ -198,13 +267,15 @@ pid_t process_fork(struct intr_frame *frame) {
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int process_wait(pid_t pid) {
-  struct list *children = &thread_current()->pcb->children;
-  for (struct list_elem *e = list_begin(children); e != list_end(children); e = list_next(e)) {
-    struct child_status *child = list_entry(e, struct child_status, elem);
+  struct list* children = &thread_current()->pcb->children;
+  for (struct list_elem* e = list_begin(children); e != list_end(children); e = list_next(e)) {
+    struct child_status* child = list_entry(e, struct child_status, elem);
     if (child->pid == pid) {
       list_remove(e); /* Remove before sleeping: wait owns this parent reference. */
       sema_down(&child->exited);
-      int status = child->status; release_child(child); return status;
+      int status = child->status;
+      release_child(child);
+      return status;
     }
   }
   return -1;
@@ -219,21 +290,26 @@ void process_exit(void) {
   if (cur->pcb == NULL) {
     if (cur->child_status) {
       sema_up(&cur->child_status->exited);
-      release_child(cur->child_status); cur->child_status = NULL;
+      release_child(cur->child_status);
+      cur->child_status = NULL;
     }
-    thread_exit(); NOT_REACHED();
+    thread_exit();
+    NOT_REACHED();
   }
   int status = cur->pcb->exit_status;
   lock_acquire(&process_fs_lock);
   while (!list_empty(&cur->pcb->descriptors)) {
-    struct descriptor *d = list_entry(list_pop_front(&cur->pcb->descriptors), struct descriptor, elem);
-    file_close(d->file); free(d);
+    struct descriptor* d =
+        list_entry(list_pop_front(&cur->pcb->descriptors), struct descriptor, elem);
+    file_close(d->file);
+    free(d);
   }
   file_close(cur->pcb->executable);
   lock_release(&process_fs_lock);
   printf("%s: exit(%d)\n", cur->pcb->process_name, status);
   while (!list_empty(&cur->pcb->children)) {
-    struct child_status *child = list_entry(list_pop_front(&cur->pcb->children), struct child_status, elem);
+    struct child_status* child =
+        list_entry(list_pop_front(&cur->pcb->children), struct child_status, elem);
     release_child(child);
   }
 
@@ -264,7 +340,8 @@ void process_exit(void) {
   if (cur->child_status) {
     cur->child_status->status = status;
     sema_up(&cur->child_status->exited);
-    release_child(cur->child_status); cur->child_status = NULL;
+    release_child(cur->child_status);
+    cur->child_status = NULL;
   }
   thread_exit();
 }
@@ -448,7 +525,8 @@ done:
   if (success) {
     file_deny_write(file);
     t->pcb->executable = file;
-  } else file_close(file);
+  } else
+    file_close(file);
   return success;
 }
 
@@ -571,25 +649,38 @@ static bool setup_stack(void** esp) {
 }
 
 /* Build cdecl entry frame with esp % 16 == 12, and a trailing argv NULL. */
-static bool argument_stack(void **esp, char **argv, int argc) {
+static bool argument_stack(void** esp, char** argv, int argc) {
   size_t strings = 0;
-  for (int i = 0; i < argc; ++i) strings += strlen(argv[i]) + 1;
+  for (int i = 0; i < argc; ++i)
+    strings += strlen(argv[i]) + 1;
   size_t words = ((size_t)argc + 4) * sizeof(uint32_t);
   size_t padding = ((uintptr_t)PHYS_BASE - strings - words - 12) % 16;
-  if (strings + words + padding > PGSIZE) return false;
-  uint8_t *top = PHYS_BASE;
+  if (strings + words + padding > PGSIZE)
+    return false;
+  uint8_t* top = PHYS_BASE;
   for (int i = argc - 1; i >= 0; --i) {
     size_t length = strlen(argv[i]) + 1;
-    top -= length; memcpy(top, argv[i], length); argv[i] = (char *)top;
+    top -= length;
+    memcpy(top, argv[i], length);
+    argv[i] = (char*)top;
   }
-  while (((uintptr_t)top - words) % 16 != 12) *--top = 0;
-  top -= 4; *(uint32_t *)top = 0;
-  for (int i = argc - 1; i >= 0; --i) { top -= 4; *(char **)top = argv[i]; }
-  char **user_argv = (char **)top;
-  top -= 4; *(char ***)top = user_argv;
-  top -= 4; *(int *)top = argc;
-  top -= 4; *(uint32_t *)top = 0;
-  *esp = top; return true;
+  while (((uintptr_t)top - words) % 16 != 12)
+    *--top = 0;
+  top -= 4;
+  *(uint32_t*)top = 0;
+  for (int i = argc - 1; i >= 0; --i) {
+    top -= 4;
+    *(char**)top = argv[i];
+  }
+  char** user_argv = (char**)top;
+  top -= 4;
+  *(char***)top = user_argv;
+  top -= 4;
+  *(int*)top = argc;
+  top -= 4;
+  *(uint32_t*)top = 0;
+  *esp = top;
+  return true;
 }
 
 /* Adds a mapping from user virtual address UPAGE to kernel

@@ -8,7 +8,7 @@ struct file {
   struct inode* inode; /* File's inode. */
   off_t pos;           /* Current position. */
   unsigned references;
-  bool deny_write;     /* Has file_deny_write() been called? */
+  bool deny_write; /* Has file_deny_write() been called? */
 };
 
 /* Opens a file for the given INODE, of which it takes ownership,
@@ -31,9 +31,7 @@ struct file* file_open(struct inode* inode) {
 
 /* Opens and returns a new file for the same inode as FILE.
    Returns a null pointer if unsuccessful. */
-struct file* file_reopen(struct file* file) {
-  return file_open(inode_reopen(file->inode));
-}
+struct file* file_reopen(struct file* file) { return file_open(inode_reopen(file->inode)); }
 
 /* Closes FILE. */
 void file_close(struct file* file) {
@@ -45,9 +43,7 @@ void file_close(struct file* file) {
 }
 
 /* Returns the inode encapsulated by FILE. */
-struct inode* file_get_inode(struct file* file) {
-  return file->inode;
-}
+struct inode* file_get_inode(struct file* file) { return file->inode; }
 
 /* Reads SIZE bytes from FILE into BUFFER,
    starting at the file's current position.
@@ -136,7 +132,8 @@ off_t file_tell(struct file* file) {
 }
 
 /* Called with the Project1 filesystem lock held. Shares offset and deny state. */
-struct file *file_share(struct file *file) {
-  if (file) ++file->references;
+struct file* file_share(struct file* file) {
+  if (file)
+    ++file->references;
   return file;
 }

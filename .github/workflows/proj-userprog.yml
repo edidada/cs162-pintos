@@ -53,7 +53,7 @@ jobs:
             src/userprog/build/tests/**/*.output
             src/userprog/build/tests/**/*.result
 
-  format-export:
+  format-check:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -61,15 +61,16 @@ jobs:
           fetch-depth: 0
       - run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y clang-format-18
+          python3 -m venv /tmp/cs162-format
+          /tmp/cs162-format/bin/pip install --only-binary=:all: clang-format==18.1.8
           mkdir formatting
-          clang-format-18 --version > formatting/version.txt
+          formatter=/tmp/cs162-format/bin/clang-format
+          "$formatter" --version | tee formatting/version.txt
           git diff --name-only 8baa8f6f9f5e3071b51b28c1a81f80150128af56 -- '*.c' '*.h' > formatting/files.txt
-          while read -r file; do clang-format-18 -i -style=file "$file"; done < formatting/files.txt
-          tar -cf formatting/formatted.tar -T formatting/files.txt
-          git diff --stat > formatting/stat.txt
+          while read -r file; do "$formatter" --dry-run --Werror -style=file "$file"; done < formatting/files.txt
+          echo 'All task-owned C/H files match clang-format 18.1.8 and src/.clang-format' | tee formatting/result.txt
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: userprog-formatted-sources
+          name: userprog-format-check
           path: formatting/
