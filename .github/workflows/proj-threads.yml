@@ -4,6 +4,43 @@ on:
     branches: [edidada/proj-threads]
   workflow_dispatch:
 jobs:
+  user-threads:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        policy: [fifo, prio]
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-multilib clang qemu-system-x86
+      - run: |
+          set -euo pipefail
+          mkdir evidence
+          git rev-parse HEAD > evidence/commit.txt
+          export PATH="$PWD/src/utils:$PATH"
+          chmod +x src/utils/pintos*
+          make -C src/utils setitimer-helper
+          make -C src/threads > evidence/build.txt 2>&1
+          python3 - <<'PY' > evidence/selected-tests.txt
+          from pathlib import Path
+          for line in Path('src/tests/userprog/multithreading/Make.tests').read_text().splitlines():
+              if line.startswith('tests/userprog/multithreading_TESTS '):
+                  print(line.split('=', 1)[1].strip())
+          PY
+          cd src/threads/build
+          while read -r target; do
+            make KERNELFLAGS="-sched=${{ matrix.policy }}" "$target.result"
+            grep -qx PASS "$target.result"
+          done < ../../../evidence/selected-tests.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: user-threads-${{ matrix.policy }}
+          path: |
+            evidence/
+            src/threads/build/tests/**/*.output
+            src/threads/build/tests/**/*.result
   kernel-threads:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

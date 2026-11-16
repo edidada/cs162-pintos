@@ -11,6 +11,7 @@
 #include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/gdt.h"
+#include "userprog/process.h"
 #endif
 
 /* Programmable Interrupt Controller (PIC) registers.
@@ -355,6 +356,15 @@ void intr_handler(struct intr_frame* frame) {
     if (yield_on_return)
       thread_yield();
   }
+#ifdef USERPROG
+  /* After PIC acknowledgement and outside external-interrupt context, stop
+     cancelled threads before any interrupted userspace instruction resumes.
+     Kernel-mode traps finish their operation and reach the outer user trap. */
+  if (is_trap_from_userspace(frame)) {
+    intr_disable(); /* IRET restores the user's IF; close the check/return race. */
+    process_check_exit();
+  }
+#endif
 }
 
 /* Handles an unexpected interrupt with interrupt frame F.  An

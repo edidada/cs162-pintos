@@ -17,19 +17,16 @@ static void syscall_handler(struct intr_frame*);
 
 void syscall_init(void) { intr_register_int(0x30, 3, INTR_ON, syscall_handler, "syscall"); }
 
-static void terminate(int status) {
-  thread_current()->pcb->exit_status = status;
-  process_exit();
-}
+static void terminate(int status) { process_terminate(status, false); }
 static void check_buffer(const void* data, size_t size) {
   uintptr_t start = (uintptr_t)data;
   if (!size)
     return;
   if (!start || start >= (uintptr_t)PHYS_BASE || size > (uintptr_t)PHYS_BASE - start)
-    terminate(-1);
+    process_terminate(-1, true);
   for (uintptr_t p = start; p < start + size;) {
     if (!pagedir_get_page(thread_current()->pcb->pagedir, (void*)p))
-      terminate(-1);
+      process_terminate(-1, true);
     uintptr_t next = (p & ~PGMASK) + PGSIZE;
     if (next >= start + size)
       break;
@@ -41,7 +38,7 @@ static void check_writable(void* data, size_t size) {
   uintptr_t start = (uintptr_t)data;
   for (uintptr_t p = start; size && p < start + size;) {
     if (!pagedir_is_writable(thread_current()->pcb->pagedir, (void*)p))
-      terminate(-1);
+      process_terminate(-1, true);
     uintptr_t next = (p & ~PGMASK) + PGSIZE;
     if (next >= start + size)
       break;
@@ -68,6 +65,19 @@ static void syscall_handler(struct intr_frame* f) {
   uint32_t* args = f->esp;
   check_buffer(args, 4);
   switch (args[0]) {
+    case SYS_PT_CREATE:
+      check_buffer(args, 16);
+      check_buffer((void*)args[1], 1);
+      check_buffer((void*)args[2], 1);
+      f->eax = pthread_execute((stub_fun)args[1], (pthread_fun)args[2], (void*)args[3]);
+      break;
+    case SYS_PT_JOIN:
+      check_buffer(args, 8);
+      f->eax = pthread_join((tid_t)args[1]);
+      break;
+    case SYS_PT_EXIT:
+      pthread_exit();
+      break;
     case SYS_GET_TID:
       f->eax = thread_tid();
       break;
@@ -196,6 +206,6 @@ static void syscall_handler(struct intr_frame* f) {
       break;
     }
     default:
-      terminate(-1);
+      process_terminate(-1, true);
   }
 }

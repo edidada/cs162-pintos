@@ -99,6 +99,7 @@ struct thread {
 #ifdef USERPROG
   /* Owned by process.c. */
   struct child_status* child_status;
+  struct user_thread* user_thread;
   struct process* pcb; /* Process control block if this thread is a userprog */
 #endif
 
