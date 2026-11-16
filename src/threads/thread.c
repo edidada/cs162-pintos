@@ -208,6 +208,7 @@ tid_t thread_create(const char* name, int priority, thread_func* function, void*
 
   /* Add to run queue. */
   thread_unblock(t);
+  thread_preempt();
 
   return tid;
 }
@@ -234,7 +235,7 @@ static void thread_enqueue(struct thread* t) {
   ASSERT(intr_get_level() == INTR_OFF);
   ASSERT(is_thread(t));
 
-  if (active_sched_policy == SCHED_FIFO)
+  if (active_sched_policy == SCHED_FIFO || active_sched_policy == SCHED_PRIO)
     list_push_back(&fifo_ready_list, &t->elem);
   else
     PANIC("Unimplemented scheduling policy value: %d", active_sched_policy);
@@ -328,14 +329,61 @@ void thread_foreach(thread_action_func* func, void* aux) {
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
-void thread_set_priority(int new_priority) { thread_current()->priority = new_priority; }
+void thread_set_priority(int new_priority) {
+  ASSERT(PRI_MIN <= new_priority && new_priority <= PRI_MAX);
+  enum intr_level old = intr_disable();
+  struct thread* cur = thread_current();
+  cur->base_priority = new_priority;
+  thread_refresh_priority(cur);
+  thread_preempt();
+  intr_set_level(old);
+}
+
+bool thread_priority_less(const struct list_elem* a, const struct list_elem* b, void* aux UNUSED) {
+  return list_entry(a, struct thread, elem)->priority <
+         list_entry(b, struct thread, elem)->priority;
+}
+
+/* Recompute from all locks still owned. Call with interrupts off. */
+void thread_refresh_priority(struct thread* t) {
+  ASSERT(intr_get_level() == INTR_OFF);
+  t->priority = t->base_priority;
+  if (active_sched_policy != SCHED_PRIO)
+    return;
+  for (struct list_elem* e = list_begin(&t->held_locks); e != list_end(&t->held_locks);
+       e = list_next(e)) {
+    struct lock* lock = list_entry(e, struct lock, held_elem);
+    if (!list_empty(&lock->semaphore.waiters)) {
+      struct thread* donor = list_entry(
+          list_max(&lock->semaphore.waiters, thread_priority_less, NULL), struct thread, elem);
+      if (donor->priority > t->priority)
+        t->priority = donor->priority;
+    }
+  }
+}
+
+/* Unblock itself stays non-preempting; callers finish their atomic update
+   before reaching this scheduling point. Equal priorities keep their slice. */
+void thread_preempt(void) {
+  enum intr_level old = intr_disable();
+  if (active_sched_policy == SCHED_PRIO && !list_empty(&fifo_ready_list)) {
+    struct thread* next =
+        list_entry(list_max(&fifo_ready_list, thread_priority_less, NULL), struct thread, elem);
+    if (next->priority > thread_current()->priority || thread_current() == idle_thread) {
+      if (intr_context())
+        intr_yield_on_return();
+      else
+        thread_yield();
+    }
+  }
+  intr_set_level(old);
+}
 
 /* Returns the current thread's priority. */
 int thread_get_priority(void) { return thread_current()->priority; }
 
 /* Sets the current thread's nice value to NICE. */
-void thread_set_nice(int nice UNUSED) { /* Not yet implemented. */
-}
+void thread_set_nice(int nice UNUSED) { /* Not yet implemented. */ }
 
 /* Returns the current thread's nice value. */
 int thread_get_nice(void) {
@@ -428,6 +476,8 @@ static void init_thread(struct thread* t, const char* name, int priority) {
   strlcpy(t->name, name, sizeof t->name);
   t->stack = (uint8_t*)t + PGSIZE;
   t->priority = priority;
+  t->base_priority = priority;
+  list_init(&t->held_locks);
   t->pcb = NULL;
   t->magic = THREAD_MAGIC;
 
@@ -457,7 +507,11 @@ static struct thread* thread_schedule_fifo(void) {
 
 /* Strict priority scheduler */
 static struct thread* thread_schedule_prio(void) {
-  PANIC("Unimplemented scheduler policy: \"-sched=prio\"");
+  if (list_empty(&fifo_ready_list))
+    return idle_thread;
+  struct list_elem* best = list_max(&fifo_ready_list, thread_priority_less, NULL);
+  list_remove(best);
+  return list_entry(best, struct thread, elem);
 }
 
 /* Fair priority scheduler */
