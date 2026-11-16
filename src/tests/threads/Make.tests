@@ -1,7 +1,8 @@
 # -*- makefile -*-
 
 # Test names.
-tests/threads_TESTS = $(addprefix tests/threads/,alarm-single \
+tests/threads_SRC = tests/threads/alarm-block.c
+tests/threads_TESTS = $(addprefix tests/threads/,alarm-block alarm-single \
 alarm-multiple alarm-simultaneous alarm-priority alarm-zero \
 alarm-negative priority-change priority-donate-one \
 priority-donate-multiple priority-donate-multiple2 \
@@ -20,7 +21,7 @@ smfs-hierarchy-16 smfs-hierarchy-32 smfs-hierarchy-64 \
 # mlfqs-fair-20 mlfqs-nice-2 mlfqs-nice-10 mlfqs-block)
 
 # Sources for tests.
-tests/threads_SRC  = tests/threads/tests.c
+tests/threads_SRC += tests/threads/tests.c
 tests/threads_SRC += tests/threads/alarm-wait.c
 tests/threads_SRC += tests/threads/alarm-simultaneous.c
 tests/threads_SRC += tests/threads/alarm-priority.c

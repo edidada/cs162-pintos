@@ -19,7 +19,7 @@ jobs:
           make -C src/utils setitimer-helper
           make -C src/threads > evidence/build.txt 2>&1
           cd src/threads/build
-          for name in alarm-single alarm-multiple alarm-simultaneous alarm-zero alarm-negative; do
+          for name in alarm-single alarm-multiple alarm-simultaneous alarm-zero alarm-negative alarm-block; do
             make "tests/threads/$name.result"
             grep -qx PASS "tests/threads/$name.result"
           done
