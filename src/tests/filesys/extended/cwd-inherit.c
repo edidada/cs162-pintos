@@ -31,6 +31,22 @@ void test_main(void) {
   ASSERT(fd >= 2);
   close(fd);
   ASSERT(chdir("/"));
+  char data[4], name[READDIR_MAX_LEN + 1];
+  fd = open("//a/./../a/marker");
+  ASSERT(fd >= 2 && read(fd, data, 4) == 4 && !memcmp(data, "data", 4));
+  close(fd);
+  ASSERT(open("a/marker/") == -1 && open("a/marker/..") == -1);
+  ASSERT(!mkdir("a/marker/child") && !create("a/marker/", 0));
+  fd = open("a");
+  ASSERT(fd >= 2 && isdir(fd));
+  ASSERT(read(fd, data, 4) == -1 && write(fd, "x", 1) == -1);
+  unsigned count = 0;
+  while (readdir(fd, name)) {
+    ASSERT(strcmp(name, ".") && strcmp(name, ".."));
+    ++count;
+  }
+  ASSERT(count == 2);
+  close(fd);
   fd = open("//a/./../a/marker");
   ASSERT(fd >= 2);
   close(fd);
