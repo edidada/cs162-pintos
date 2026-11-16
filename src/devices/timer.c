@@ -20,6 +20,21 @@
 /* Number of timer ticks since OS booted. */
 static int64_t ticks;
 
+/* Records live on the sleeping thread's kernel stack until it is woken.
+   Timer interrupts and insertion both access this list with interrupts off. */
+struct timer_waiter {
+  int64_t deadline;
+  struct semaphore done;
+  struct list_elem elem;
+};
+static struct list sleepers;
+
+static bool earlier_deadline(const struct list_elem* a, const struct list_elem* b,
+                             void* aux UNUSED) {
+  return list_entry(a, struct timer_waiter, elem)->deadline <
+         list_entry(b, struct timer_waiter, elem)->deadline;
+}
+
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
@@ -33,6 +48,7 @@ static void real_time_delay(int64_t num, int32_t denom);
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void timer_init(void) {
+  list_init(&sleepers);
   pit_configure_channel(0, 2, TIMER_FREQ);
   intr_register_ext(0x20, timer_interrupt, "8254 Timer");
 }
@@ -76,11 +92,20 @@ int64_t timer_elapsed(int64_t then) { return timer_ticks() - then; }
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void timer_sleep(int64_t ticks) {
-  int64_t start = timer_ticks();
-
   ASSERT(intr_get_level() == INTR_ON);
-  while (timer_elapsed(start) < ticks)
-    thread_yield();
+  ASSERT(!intr_context());
+  if (ticks <= 0)
+    return;
+
+  struct timer_waiter waiter;
+  sema_init(&waiter.done, 0);
+  enum intr_level old_level = intr_disable();
+  int64_t now = timer_ticks();
+  waiter.deadline = ticks > INT64_MAX - now ? INT64_MAX : now + ticks;
+  list_insert_ordered(&sleepers, &waiter.elem, earlier_deadline, NULL);
+  /* Keeping interrupts off through down prevents a lost wakeup. */
+  sema_down(&waiter.done);
+  intr_set_level(old_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -128,6 +153,13 @@ void timer_print_stats(void) { printf("Timer: %" PRId64 " ticks\n", timer_ticks(
 /* Timer interrupt handler. */
 static void timer_interrupt(struct intr_frame* args UNUSED) {
   ticks++;
+  while (!list_empty(&sleepers)) {
+    struct timer_waiter* waiter = list_entry(list_front(&sleepers), struct timer_waiter, elem);
+    if (waiter->deadline > ticks)
+      break;
+    list_pop_front(&sleepers);
+    sema_up(&waiter->done);
+  }
   thread_tick();
 }
 

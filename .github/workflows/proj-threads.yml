@@ -1,0 +1,33 @@
+name: CS162 Project2 Threads
+on:
+  push:
+    branches: [edidada/proj-threads]
+  workflow_dispatch:
+jobs:
+  alarm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-multilib clang qemu-system-x86
+      - run: |
+          set -euo pipefail
+          mkdir evidence
+          git rev-parse HEAD > evidence/commit.txt
+          export PATH="$PWD/src/utils:$PATH"
+          chmod +x src/utils/pintos*
+          make -C src/utils setitimer-helper
+          make -C src/threads > evidence/build.txt 2>&1
+          cd src/threads/build
+          for name in alarm-single alarm-multiple alarm-simultaneous alarm-zero alarm-negative; do
+            make "tests/threads/$name.result"
+            grep -qx PASS "tests/threads/$name.result"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: threads-alarm-evidence
+          path: |
+            evidence/
+            src/threads/build/tests/**/*.output
+            src/threads/build/tests/**/*.result
