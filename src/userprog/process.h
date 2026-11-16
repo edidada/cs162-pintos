@@ -33,6 +33,9 @@ struct child_status;
 extern struct lock process_fs_lock;
 
 struct process {
+  struct list user_sync;
+  struct lock user_sync_lock;
+  unsigned user_lock_count, user_sema_count;
   struct list descriptors;
   int next_fd;
   struct file* executable;
@@ -52,6 +55,7 @@ pid_t process_execute(const char* file_name);
 int process_wait(pid_t);
 void process_exit(void);
 void process_activate(void);
+bool process_user_sync(unsigned, void*, int);
 
 bool is_main_thread(struct thread*, struct process*);
 pid_t get_pid(struct process*);

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syscall-nr.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -21,6 +22,83 @@
 #include "threads/vaddr.h"
 
 struct lock process_fs_lock;
+struct user_sync {
+  struct list_elem elem;
+  void* address;
+  bool is_lock;
+  union {
+    struct lock lock;
+    struct semaphore sema;
+  } object;
+};
+
+/* Objects are registered by address, not by uninitialized user bytes.
+   Entries remain stable until all process threads have terminated. */
+bool process_user_sync(unsigned code, void* address, int value) {
+  struct process* pcb = thread_current()->pcb;
+  bool is_lock = code == SYS_LOCK_INIT || code == SYS_LOCK_ACQUIRE || code == SYS_LOCK_RELEASE;
+  bool initializing = code == SYS_LOCK_INIT || code == SYS_SEMA_INIT;
+  if (!address || !is_user_vaddr(address) || !pagedir_get_page(pcb->pagedir, address) ||
+      (initializing && !pagedir_is_writable(pcb->pagedir, address)))
+    return false;
+  if (code == SYS_SEMA_INIT && value < 0)
+    return false;
+
+  lock_acquire(&pcb->user_sync_lock);
+  struct user_sync* object = NULL;
+  for (struct list_elem* e = list_begin(&pcb->user_sync); e != list_end(&pcb->user_sync);
+       e = list_next(e)) {
+    struct user_sync* candidate = list_entry(e, struct user_sync, elem);
+    if (candidate->address == address && candidate->is_lock == is_lock) {
+      object = candidate;
+      break;
+    }
+  }
+  if (initializing) {
+    unsigned* count = is_lock ? &pcb->user_lock_count : &pcb->user_sema_count;
+    if (object != NULL || *count == 256) {
+      lock_release(&pcb->user_sync_lock);
+      return false;
+    }
+    object = malloc(sizeof *object);
+    if (object != NULL) {
+      object->address = address;
+      object->is_lock = is_lock;
+      if (is_lock)
+        lock_init(&object->object.lock);
+      else
+        sema_init(&object->object.sema, value);
+      list_push_back(&pcb->user_sync, &object->elem);
+      ++*count;
+    }
+    lock_release(&pcb->user_sync_lock);
+    return object != NULL;
+  }
+  lock_release(&pcb->user_sync_lock);
+  if (object == NULL)
+    return false;
+  if (is_lock) {
+    struct lock* lock = &object->object.lock;
+    if (code == SYS_LOCK_ACQUIRE) {
+      if (lock_held_by_current_thread(lock))
+        return false;
+      lock_acquire(lock);
+    } else {
+      if (!lock_held_by_current_thread(lock))
+        return false;
+      lock_release(lock);
+    }
+  } else if (code == SYS_SEMA_DOWN)
+    sema_down(&object->object.sema);
+  else
+    sema_up(&object->object.sema);
+  return true;
+}
+
+static void init_user_sync(struct process* pcb) {
+  list_init(&pcb->user_sync);
+  lock_init(&pcb->user_sync_lock);
+}
 struct child_status {
   struct list_elem elem;
   pid_t pid;
@@ -62,6 +140,7 @@ void userprog_init(void) {
   t->pcb = calloc(sizeof(struct process), 1);
   success = t->pcb != NULL;
   if (success) {
+    init_user_sync(t->pcb);
     list_init(&t->pcb->children);
     list_init(&t->pcb->descriptors);
     t->pcb->next_fd = 2;
@@ -140,6 +219,7 @@ static void start_process(void* arg) {
   struct process* pcb = calloc(1, sizeof *pcb);
   bool success = pcb && argv && argc;
   if (pcb) {
+    init_user_sync(pcb);
     list_init(&pcb->children);
     list_init(&pcb->descriptors);
     pcb->next_fd = 2;
@@ -183,6 +263,7 @@ static void start_fork(void* arg) {
   struct process* pcb = calloc(1, sizeof *pcb);
   bool success = pcb != NULL;
   if (pcb) {
+    init_user_sync(pcb);
     list_init(&pcb->children);
     list_init(&pcb->descriptors);
     pcb->main_thread = thread;
@@ -334,6 +415,8 @@ void process_exit(void) {
      If this happens, then an unfortuantely timed timer interrupt
      can try to activate the pagedir, but it is now freed memory */
   struct process* pcb_to_free = cur->pcb;
+  while (!list_empty(&pcb_to_free->user_sync))
+    free(list_entry(list_pop_front(&pcb_to_free->user_sync), struct user_sync, elem));
   cur->pcb = NULL;
   free(pcb_to_free);
 

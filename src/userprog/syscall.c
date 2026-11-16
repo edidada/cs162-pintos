@@ -68,6 +68,19 @@ static void syscall_handler(struct intr_frame* f) {
   uint32_t* args = f->esp;
   check_buffer(args, 4);
   switch (args[0]) {
+    case SYS_GET_TID:
+      f->eax = thread_tid();
+      break;
+    case SYS_LOCK_INIT:
+    case SYS_LOCK_ACQUIRE:
+    case SYS_LOCK_RELEASE:
+    case SYS_SEMA_INIT:
+    case SYS_SEMA_DOWN:
+    case SYS_SEMA_UP:
+      check_buffer(args, args[0] == SYS_SEMA_INIT ? 12 : 8);
+      f->eax =
+          process_user_sync(args[0], (void*)args[1], args[0] == SYS_SEMA_INIT ? (int)args[2] : 0);
+      break;
     case SYS_HALT:
       shutdown_power_off();
       break;
