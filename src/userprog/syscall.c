@@ -6,6 +6,7 @@
 #include "filesys/cache.h"
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
+#include "filesys/directory.h"
 #include "filesys/filesys.h"
 #include "devices/input.h"
 #include <syscall-nr.h>
@@ -71,6 +72,29 @@ static void syscall_handler(struct intr_frame* f) {
   uint32_t* args = f->esp;
   check_buffer(args, 4);
   switch (args[0]) {
+    case SYS_CHDIR:
+    case SYS_MKDIR: {
+      check_buffer(args, 8);
+      const char* path = (const char*)args[1];
+      check_string(path);
+      lock_acquire(&process_fs_lock);
+      f->eax = args[0] == SYS_CHDIR ? filesys_chdir(path) : filesys_mkdir(path);
+      lock_release(&process_fs_lock);
+      break;
+    }
+    case SYS_ISDIR:
+    case SYS_READDIR: {
+      unsigned code = args[0];
+      check_buffer(args, code == SYS_READDIR ? 12 : 8);
+      if (code == SYS_READDIR)
+        check_writable((void*)args[2], NAME_MAX + 1);
+      lock_acquire(&process_fs_lock);
+      struct descriptor* d = descriptor((int)args[1]);
+      f->eax = d && inode_is_dir(file_get_inode(d->file)) &&
+               (code == SYS_ISDIR || file_readdir(d->file, (char*)args[2]));
+      lock_release(&process_fs_lock);
+      break;
+    }
     case SYS_FS_FREE:
       f->eax = free_map_available();
       break;
@@ -174,7 +198,7 @@ static void syscall_handler(struct intr_frame* f) {
       } else {
         lock_acquire(&process_fs_lock);
         struct descriptor* d = descriptor(fd);
-        if (!d)
+        if (!d || inode_is_dir(file_get_inode(d->file)))
           f->eax = -1;
         else
           f->eax = reading ? file_read(d->file, buffer, size) : file_write(d->file, buffer, size);
@@ -197,7 +221,7 @@ static void syscall_handler(struct intr_frame* f) {
         else if (code == SYS_TELL)
           f->eax = file_tell(d->file);
         else if (code == SYS_SEEK) {
-          if (args[2] <= INT_MAX)
+          if (args[2] <= INT_MAX && !inode_is_dir(file_get_inode(d->file)))
             file_seek(d->file, args[2]);
         } else {
           list_remove(&d->elem);

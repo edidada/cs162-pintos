@@ -2,8 +2,11 @@
 #define FILESYS_FILE_H
 
 #include "filesys/off_t.h"
+#include <stdbool.h>
+struct file;
 
 struct inode;
+bool file_readdir(struct file*, char*);
 
 /* Opening and closing files. */
 struct file* file_open(struct inode*);

@@ -10,6 +10,7 @@
 #include "userprog/tss.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
+#include "filesys/inode.h"
 #include "filesys/filesys.h"
 #include "threads/flags.h"
 #include "threads/init.h"
@@ -30,6 +31,7 @@ struct child_status {
   bool load_ok;
 };
 struct launch {
+  struct dir* cwd;
   char* command;
   struct child_status* child;
 };
@@ -108,8 +110,20 @@ pid_t process_execute(const char* command) {
     ++n;
   }
   name[n] = 0;
+  lock_acquire(&process_fs_lock);
+  launch->cwd = filesys_cwd_reopen();
+  lock_release(&process_fs_lock);
+  if (launch->cwd == NULL) {
+    palloc_free_page(copy);
+    free(child);
+    free(launch);
+    return TID_ERROR;
+  }
   pid_t pid = thread_create(name, PRI_DEFAULT, start_process, launch);
   if (pid == TID_ERROR) {
+    lock_acquire(&process_fs_lock);
+    dir_close(launch->cwd);
+    lock_release(&process_fs_lock);
     palloc_free_page(copy);
     free(launch);
     free(child);
@@ -140,6 +154,7 @@ static void start_process(void* arg) {
   struct process* pcb = calloc(1, sizeof *pcb);
   bool success = pcb && argv && argc;
   if (pcb) {
+    pcb->cwd = launch.cwd;
     list_init(&pcb->children);
     list_init(&pcb->descriptors);
     pcb->next_fd = 2;
@@ -147,6 +162,11 @@ static void start_process(void* arg) {
     pcb->main_thread = t;
     strlcpy(pcb->process_name, t->name, sizeof pcb->process_name);
     t->pcb = pcb;
+  }
+  if (!pcb) {
+    lock_acquire(&process_fs_lock);
+    dir_close(launch.cwd);
+    lock_release(&process_fs_lock);
   }
   struct intr_frame frame;
   memset(&frame, 0, sizeof frame);
@@ -198,9 +218,11 @@ static void start_fork(void* arg) {
     }
     if (success) {
       lock_acquire(&process_fs_lock);
+      pcb->cwd = parent->cwd ? dir_reopen(parent->cwd) : dir_open_root();
+      success = pcb->cwd != NULL;
       pcb->executable = file_share(parent->executable);
       for (struct list_elem* e = list_begin(&parent->descriptors);
-           e != list_end(&parent->descriptors); e = list_next(e)) {
+           success && e != list_end(&parent->descriptors); e = list_next(e)) {
         struct descriptor* old = list_entry(e, struct descriptor, elem);
         struct descriptor* copy = malloc(sizeof *copy);
         if (!copy) {
@@ -305,6 +327,7 @@ void process_exit(void) {
     free(d);
   }
   file_close(cur->pcb->executable);
+  dir_close(cur->pcb->cwd);
   lock_release(&process_fs_lock);
   printf("%s: exit(%d)\n", cur->pcb->process_name, status);
   while (!list_empty(&cur->pcb->children)) {
@@ -448,7 +471,7 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
 
   /* Open executable file. */
   file = filesys_open(file_name);
-  if (file == NULL) {
+  if (file == NULL || inode_is_dir(file_get_inode(file))) {
     printf("load: %s: open failed\n", file_name);
     goto done;
   }

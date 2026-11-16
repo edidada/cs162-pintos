@@ -1,6 +1,7 @@
 #include "filesys/file.h"
 #include <debug.h>
 #include "filesys/inode.h"
+#include "filesys/directory.h"
 #include "threads/malloc.h"
 
 /* An open file. */
@@ -136,4 +137,8 @@ struct file* file_share(struct file* file) {
   if (file)
     ++file->references;
   return file;
+}
+
+bool file_readdir(struct file* file, char name[NAME_MAX + 1]) {
+  return dir_read_next(file->inode, &file->pos, name);
 }

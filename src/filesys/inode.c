@@ -26,7 +26,7 @@ struct inode {
   struct list_elem elem;
   block_sector_t sector;
   int open_cnt, deny_write_cnt;
-  bool removed, loading;
+  bool removed, loading, directory;
   off_t length;
   struct rw_lock growth_lock;
 };
@@ -141,13 +141,34 @@ static void release_tree(block_sector_t sector, unsigned depth) {
       release_tree(pointer_at(sector, i * sizeof(block_sector_t)), depth - 1);
   free_map_release(sector, 1);
 }
-void inode_discard(block_sector_t sector) {
+void inode_discard_data(block_sector_t sector) {
   for (size_t i = 0; i < DIRECT_COUNT; ++i)
     release_tree(
         pointer_at(sector, offsetof(struct inode_disk, direct) + i * sizeof(block_sector_t)), 0);
   release_tree(pointer_at(sector, offsetof(struct inode_disk, indirect)), 1);
   release_tree(pointer_at(sector, offsetof(struct inode_disk, doubly)), 2);
+  cache_zero(sector);
+}
+void inode_discard(block_sector_t sector) {
+  inode_discard_data(sector);
   free_map_release(sector, 1);
+}
+void inode_set_directory(block_sector_t sector) {
+  uint32_t flags = 1;
+  cache_write(sector, &flags, offsetof(struct inode_disk, flags), sizeof flags);
+}
+bool inode_is_dir(const struct inode* inode) { return inode->directory; }
+bool inode_is_removed(const struct inode* inode) {
+  lock_acquire(&open_lock);
+  bool removed = inode->removed;
+  lock_release(&open_lock);
+  return removed;
+}
+int inode_open_count(const struct inode* inode) {
+  lock_acquire(&open_lock);
+  int count = inode->open_cnt;
+  lock_release(&open_lock);
+  return count;
 }
 
 struct inode* inode_open(block_sector_t sector) {
@@ -187,6 +208,7 @@ struct inode* inode_open(block_sector_t sector) {
   const struct inode_disk* disk = cache_data(entry);
   bool valid = disk->magic == INODE_MAGIC && disk->length >= 0 && disk->length <= MAX_FILE_SIZE;
   inode->length = disk->length;
+  inode->directory = (disk->flags & 1) != 0;
   cache_put(entry, false);
   lock_acquire(&open_lock);
   inode->loading = false;

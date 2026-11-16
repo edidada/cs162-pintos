@@ -49,7 +49,7 @@ GETCMD += 2> $(TEST)-persistence.errors $(if $(VERBOSE),|tee,>) $(TEST)-persiste
 
 tests/filesys/extended/%.output: kernel.bin
 	rm -f tmp.dsk
-	pintos-mkdisk tmp.dsk --filesys-size=2
+	pintos-mkdisk tmp.dsk --filesys-size=$(or $($(TEST)_FILESYS_MB),2)
 	$(TESTCMD)
 	$(GETCMD)
 	rm -f tmp.dsk
@@ -61,3 +61,5 @@ TARS = $(addsuffix .tar,$(tests/filesys/extended_TESTS))
 clean::
 	rm -f $(TARS)
 	rm -f tests/filesys/extended/can-rmdir-cwd
+
+tests/filesys/extended/index-bound_FILESYS_MB = 16

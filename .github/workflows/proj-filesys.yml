@@ -36,16 +36,13 @@ jobs:
           p.write_text(s.replace(marker, replacement))
           p = Path('src/filesys/filesys.c')
           s = p.read_text()
-          start = s.index('bool filesys_create(')
-          end = s.index('/* Opens the file', start)
-          body = s[start:end]
-          marker = '  dir_close(dir);\n\n  return success;'
-          assert body.count(marker) == 1
-          replacement = '''  dir_close(dir);
+          marker = '  return create_path(name, initial_size, false);'
+          assert s.count(marker) == 1
+          replacement = '''  bool success = create_path(name, initial_size, false);
             extern int inode_fault_countdown;
             if (success && !strcmp(name, "memory")) inode_fault_countdown = 260;
             return success;'''
-          p.write_text(s[:start] + body.replace(marker, replacement) + s[end:])
+          p.write_text(s.replace(marker, replacement))
           PY
           git diff -- src/filesys/inode.c src/filesys/filesys.c > evidence/injection.patch
           export PATH="$PWD/src/utils:$PATH"
@@ -65,9 +62,9 @@ jobs:
             evidence/
             src/filesys/build/tests/filesys/extended/growth-mem.output
             src/filesys/build/tests/filesys/extended/growth-mem.result
-  cache:
+  filesys-suite:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y gcc-multilib clang qemu-system-x86
@@ -80,49 +77,6 @@ jobs:
           make -C src/utils setitimer-helper
           make -C src/filesys > evidence/build.txt 2>&1
           cd src/filesys/build
-          for name in cache-warm cache-merge; do
-            target="tests/filesys/extended/$name"
-            pintos -v -k -T 120 --qemu --filesys-size=2 -p "$target" -a "$name" -- -q -f run "$name" > "$target.output" 2>&1
-            perl -I../.. "../../$target.ck" "$target" "$target.result"
-            grep -qx PASS "$target.result"
-          done
-          for name in grow-create grow-file-size grow-root-lg grow-root-sm grow-seq-lg grow-seq-sm grow-sparse grow-tell grow-two-files grow-rollback; do
-            target="tests/filesys/extended/$name"
-            pintos -v -k -T 120 --qemu --filesys-size=2 -p "$target" -a "$name" -- -q -f run "$name" > "$target.output" 2>&1
-            perl -I../.. "../../$target.ck" "$target" "$target.result"
-            grep -qx PASS "$target.result"
-          done
-          target=tests/filesys/extended/syn-rw
-          pintos -v -k -T 120 --qemu --filesys-size=2 -p "$target" -a syn-rw -p tests/filesys/extended/child-syn-rw -a child-syn-rw -- -q -f run syn-rw > "$target.output" 2>&1
-          perl -I../.. ../../tests/filesys/extended/syn-rw.ck "$target" "$target.result"
-          grep -qx PASS "$target.result"
-          target=tests/filesys/extended/index-bound
-          pintos -v -k -T 180 --qemu --filesys-size=16 -p "$target" -a index-bound -- -q -f run index-bound > "$target.output" 2>&1
-          perl -I../.. ../../tests/filesys/extended/index-bound.ck "$target" "$target.result"
-          grep -qx PASS "$target.result"
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: filesys-cache-evidence
-          path: |
-            evidence/
-            src/filesys/build/tests/**/*.output
-            src/filesys/build/tests/**/*.result
-  userprog-regression:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y gcc-multilib clang qemu-system-x86
-      - run: |
-          set -euo pipefail
-          mkdir evidence
-          git rev-parse HEAD > evidence/commit.txt
-          export PATH="$PWD/src/utils:$PATH"
-          chmod +x src/utils/pintos*
-          make -C src/utils setitimer-helper
-          make -C src/userprog > evidence/build.txt 2>&1
-          cd src/userprog/build
           make check 2>&1 | tee ../../../evidence/full-suite.txt
           for name in ro-target fork-keep; do
             make "tests/userprog/$name.output"
@@ -132,8 +86,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: filesys-cache-userprog-regression
+          name: filesys-directory-suite
           path: |
             evidence/
-            src/userprog/build/tests/**/*.output
-            src/userprog/build/tests/**/*.result
+            src/filesys/build/tests/**/*.output
+            src/filesys/build/tests/**/*.result
+            src/filesys/build/tests/**/*.tar

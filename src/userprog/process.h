@@ -33,6 +33,7 @@ struct child_status;
 extern struct lock process_fs_lock;
 
 struct process {
+  struct dir* cwd;
   struct list descriptors;
   int next_fd;
   struct file* executable;
