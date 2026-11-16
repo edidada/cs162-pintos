@@ -4,6 +4,64 @@ on:
     branches: [edidada/proj-filesys]
   workflow_dispatch:
 jobs:
+  growth-memory-failure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-multilib clang qemu-system-x86
+      - run: |
+          set -euo pipefail
+          mkdir evidence
+          git rev-parse HEAD > evidence/commit.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/filesys/inode.c')
+          s = p.read_text()
+          marker = 'static struct list open_inodes;'
+          assert s.count(marker) == 1
+          s = s.replace(marker, 'int inode_fault_countdown = -1;\n' + marker)
+          marker = 'struct allocation* record = malloc(sizeof *record);'
+          assert s.count(marker) == 1
+          replacement = '''struct allocation* record;
+            if (inode_fault_countdown == 0) {
+              inode_fault_countdown = -1;
+              printf("INJECTED allocation failure after 260 allocations\\n");
+              record = NULL;
+            } else {
+              if (inode_fault_countdown > 0) --inode_fault_countdown;
+              record = malloc(sizeof *record);
+            }'''
+          s = s.replace('#include <debug.h>', '#include <debug.h>\n#include <stdio.h>')
+          p.write_text(s.replace(marker, replacement))
+          p = Path('src/filesys/filesys.c')
+          s = p.read_text()
+          marker = '  dir_close(dir);\n\n  return success;'
+          assert s.count(marker) == 1
+          replacement = '''  dir_close(dir);
+            extern int inode_fault_countdown;
+            if (success && !strcmp(name, "memory")) inode_fault_countdown = 260;
+            return success;'''
+          p.write_text(s.replace(marker, replacement))
+          PY
+          git diff -- src/filesys/inode.c src/filesys/filesys.c > evidence/injection.patch
+          export PATH="$PWD/src/utils:$PATH"
+          chmod +x src/utils/pintos*
+          make -C src/utils setitimer-helper
+          make -C src/filesys > evidence/build.txt 2>&1
+          cd src/filesys/build
+          target=tests/filesys/extended/growth-mem
+          pintos -v -k -T 120 --qemu --filesys-size=2 -p "$target" -a growth-mem -- -q -f run growth-mem > "$target.output" 2>&1
+          perl -I../.. ../../tests/filesys/extended/growth-mem.ck "$target" "$target.result"
+          grep -qx PASS "$target.result"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: filesys-growth-memory-failure
+          path: |
+            evidence/
+            src/filesys/build/tests/filesys/extended/growth-mem.output
+            src/filesys/build/tests/filesys/extended/growth-mem.result
   cache:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

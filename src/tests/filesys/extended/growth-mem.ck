@@ -1,0 +1,10 @@
+use strict;
+use warnings;
+use tests::tests;
+our $test;
+my @output = read_text_file("$test.output");
+common_checks("run", @output);
+my $text = join("\n", @output);
+fail "Missing injected failure" unless $text =~ /INJECTED allocation failure after 260 allocations/;
+fail "Missing recovery" unless $text =~ /MEMORY FAILURE rollback and retry PASS/ && $text =~ /growth-mem: exit\(0\)/;
+pass;
