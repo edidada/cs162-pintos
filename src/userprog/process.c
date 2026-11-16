@@ -100,7 +100,7 @@ static void init_user_sync(struct process* pcb) {
   lock_init(&pcb->user_sync_lock);
   lock_init(&pcb->state_lock);
   list_init(&pcb->threads);
-  sema_init(&pcb->changed, 0);
+  cond_init(&pcb->changed);
   pcb->live_threads = 1;
   pcb->stack_slots[0] = true;
   pcb->pid = thread_tid();
@@ -872,7 +872,7 @@ static void detach_thread(void) {
   cur->user_thread = NULL;
   cur->child_status = NULL; /* The PCB owns the process's parent reference. */
   finish_record(state);
-  sema_up(&pcb->changed);
+  cond_broadcast(&pcb->changed, &pcb->state_lock);
   lock_release(&pcb->state_lock);
   thread_exit();
   NOT_REACHED();
@@ -904,18 +904,14 @@ static void terminate_process(int status, int rank) {
   for (struct list_elem* e = list_begin(&pcb->threads); e != list_end(&pcb->threads);
        e = list_next(e))
     finish_record(list_entry(e, struct user_thread, elem));
-  sema_up(&pcb->changed); /* Wake a main pthread_exit waiter as well. */
+  cond_broadcast(&pcb->changed, &pcb->state_lock); /* Wake a main pthread_exit waiter as well. */
   lock_release(&pcb->state_lock);
   process_check_exit();
   release_user_locks(pcb);
-  for (;;) {
-    lock_acquire(&pcb->state_lock);
-    bool alone = pcb->live_threads == 1;
-    lock_release(&pcb->state_lock);
-    if (alone)
-      break;
-    sema_down(&pcb->changed);
-  }
+  lock_acquire(&pcb->state_lock);
+  while (pcb->live_threads > 1)
+    cond_wait(&pcb->changed, &pcb->state_lock);
+  lock_release(&pcb->state_lock);
   process_cleanup();
   NOT_REACHED();
 }
@@ -1047,11 +1043,13 @@ void pthread_exit_main(void) {
   for (;;) {
     process_check_exit();
     lock_acquire(&pcb->state_lock);
-    bool alone = pcb->live_threads == 1;
-    lock_release(&pcb->state_lock);
-    if (alone)
+    if (pcb->live_threads == 1) {
+      lock_release(&pcb->state_lock);
       break;
-    sema_down(&pcb->changed);
+    }
+    if (!pcb->exiting)
+      cond_wait(&pcb->changed, &pcb->state_lock);
+    lock_release(&pcb->state_lock);
   }
   terminate_process(0, 1);
 }

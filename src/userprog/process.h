@@ -46,7 +46,7 @@ struct process {
   struct lock state_lock;
   struct list threads;
   struct user_thread main_state;
-  struct semaphore changed;
+  struct condition changed;
   unsigned live_threads;
   bool stack_slots[MAX_THREADS];
   bool exiting;
