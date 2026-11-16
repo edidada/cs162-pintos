@@ -2,12 +2,13 @@
 
 # Test names.
 tests/threads_SRC = tests/threads/alarm-block.c
+tests/threads_SRC += tests/threads/prio-transfer.c
 tests/threads_TESTS = $(addprefix tests/threads/,alarm-block alarm-single \
 alarm-multiple alarm-simultaneous alarm-priority alarm-zero \
 alarm-negative priority-change priority-donate-one \
 priority-donate-multiple priority-donate-multiple2 \
 priority-donate-nest priority-donate-sema priority-donate-lower \
-priority-fifo priority-preempt priority-sema priority-condvar \
+priority-fifo priority-preempt priority-sema priority-condvar prio-transfer \
 st-matmul mt-matmul-2 mt-matmul-4 mt-matmul-16 \
 priority-donate-chain priority-starve priority-starve-sema \
 smfs-starve-0 smfs-starve-1 smfs-starve-2 smfs-starve-4 \
@@ -66,6 +67,7 @@ tests/threads/mlfqs-block.output
 ALARM_TESTS       = $(filter tests/threads/alarm-%,$(tests/threads_TESTS))
                     # tests/threads/alarm-priority is included but overriden by SCHED_PRIO_TESTS
 SCHED_PRIO_TESTS  = $(filter tests/threads/priority-%,$(tests/threads_TESTS)) \
+                    tests/threads/prio-transfer \
                     $(filter tests/threads/mt-matmul%,$(tests/threads_TESTS)) \
                     tests/threads/st-matmul \
                     tests/threads/alarm-priority

@@ -5,6 +5,7 @@
 
 void run_threads_test(const char*);
 extern test_func test_alarm_block;
+extern test_func test_prio_transfer;
 
 extern test_func test_alarm_single;
 extern test_func test_alarm_multiple;

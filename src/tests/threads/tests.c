@@ -4,6 +4,7 @@
 #include <string.h>
 
 static const struct test threads_tests[] = {
+    {"prio-transfer", test_prio_transfer},
     {"alarm-block", test_alarm_block},
     {"alarm-single", test_alarm_single},
     {"alarm-multiple", test_alarm_multiple},

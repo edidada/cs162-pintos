@@ -23,6 +23,8 @@ jobs:
             make "tests/threads/$name.result"
             grep -qx PASS "tests/threads/$name.result"
           done
+          make tests/threads/prio-transfer.result
+          grep -qx PASS tests/threads/prio-transfer.result
           for name in alarm-priority priority-change priority-donate-one priority-donate-multiple priority-donate-multiple2 priority-donate-nest priority-donate-sema priority-donate-lower priority-fifo priority-preempt priority-sema priority-condvar priority-donate-chain priority-starve priority-starve-sema st-matmul mt-matmul-2 mt-matmul-4 mt-matmul-16; do
             make "tests/threads/$name.result"
             grep -qx PASS "tests/threads/$name.result"
