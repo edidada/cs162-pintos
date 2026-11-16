@@ -4,6 +4,54 @@ on:
     branches: [edidada/proj-threads]
   workflow_dispatch:
 jobs:
+  concept-negative-control:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gcc-multilib clang qemu-system-x86
+      - run: |
+          set -euo pipefail
+          mkdir evidence
+          git rev-parse HEAD > evidence/commit.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/threads/synch.c')
+          s = p.read_text()
+          marker = 'void sema_up(struct semaphore* sema) {'
+          comparator = '''static bool base_priority_less(const struct list_elem* a, const struct list_elem* b,
+                                         void* aux UNUSED) {
+            return list_entry(a, struct thread, elem)->base_priority <
+                   list_entry(b, struct thread, elem)->base_priority;
+          }
+          '''
+          assert s.count(marker) == 1
+          s = s.replace(marker, comparator + marker)
+          old = 'list_max(&sema->waiters, thread_priority_less, NULL)'
+          assert s.count(old) == 1
+          s = s.replace(old, 'list_max(&sema->waiters, base_priority_less, NULL)')
+          p.write_text(s)
+          PY
+          git diff -- src/threads/synch.c > evidence/mutation.patch
+          export PATH="$PWD/src/utils:$PATH"
+          chmod +x src/utils/pintos*
+          make -C src/utils setitimer-helper
+          make -C src/threads > evidence/build.txt 2>&1
+          cd src/threads/build
+          make tests/threads/priority-donate-sema.output
+          perl -I../.. ../../tests/threads/priority-donate-sema.ck tests/threads/priority-donate-sema tests/threads/priority-donate-sema.result
+          grep -q '^FAIL' tests/threads/priority-donate-sema.result
+          grep -q 'Thread M finished' tests/threads/priority-donate-sema.output
+          if grep -q 'Thread L downed semaphore' tests/threads/priority-donate-sema.output; then exit 1; fi
+          echo 'Original checker rejects semaphore selection by base priority' > ../../../evidence/negative-control.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: threads-concept-negative-control
+          path: |
+            evidence/
+            src/threads/build/tests/threads/priority-donate-sema.output
+            src/threads/build/tests/threads/priority-donate-sema.result
   user-threads:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -128,3 +176,25 @@ jobs:
             evidence/
             src/userprog/build/tests/**/*.output
             src/userprog/build/tests/**/*.result
+
+  format-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          set -euo pipefail
+          python3 -m venv /tmp/cs162-format
+          /tmp/cs162-format/bin/pip install --only-binary=:all: clang-format==18.1.8
+          mkdir formatting
+          formatter=/tmp/cs162-format/bin/clang-format
+          "$formatter" --version | tee formatting/version.txt
+          git diff --name-only 8baa8f6f9f5e3071b51b28c1a81f80150128af56 -- '*.c' '*.h' > formatting/files.txt
+          while read -r file; do "$formatter" --dry-run --Werror -style=file "$file"; done < formatting/files.txt
+          echo 'All task-owned C/H files match clang-format 18.1.8 and src/.clang-format' | tee formatting/result.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: threads-format-check
+          path: formatting/
