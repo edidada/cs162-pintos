@@ -23,5 +23,5 @@ void test_main(void) {
   close(fd);
   ASSERT(remove("memory"));
   ASSERT(fs_free_sectors() == initial);
-  msg("MEMORY FAILURE rollback and retry PASS");
+  msg("MEMORY rollback and retry PASS");
 }
