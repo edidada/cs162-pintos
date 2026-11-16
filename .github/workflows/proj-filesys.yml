@@ -25,6 +25,20 @@ jobs:
             perl -I../.. "../../$target.ck" "$target" "$target.result"
             grep -qx PASS "$target.result"
           done
+          for name in grow-create grow-file-size grow-root-lg grow-root-sm grow-seq-lg grow-seq-sm grow-sparse grow-tell grow-two-files grow-rollback; do
+            target="tests/filesys/extended/$name"
+            pintos -v -k -T 120 --qemu --filesys-size=2 -p "$target" -a "$name" -- -q -f run "$name" > "$target.output" 2>&1
+            perl -I../.. "../../$target.ck" "$target" "$target.result"
+            grep -qx PASS "$target.result"
+          done
+          target=tests/filesys/extended/syn-rw
+          pintos -v -k -T 120 --qemu --filesys-size=2 -p "$target" -a syn-rw -p tests/filesys/extended/child-syn-rw -a child-syn-rw -- -q -f run syn-rw > "$target.output" 2>&1
+          perl -I../.. ../../tests/filesys/extended/syn-rw.ck "$target" "$target.result"
+          grep -qx PASS "$target.result"
+          target=tests/filesys/extended/index-bound
+          pintos -v -k -T 180 --qemu --filesys-size=16 -p "$target" -a index-bound -- -q -f run index-bound > "$target.output" 2>&1
+          perl -I../.. ../../tests/filesys/extended/index-bound.ck "$target" "$target.result"
+          grep -qx PASS "$target.result"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

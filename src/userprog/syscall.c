@@ -4,6 +4,8 @@
 #include "threads/malloc.h"
 #include "filesys/file.h"
 #include "filesys/cache.h"
+#include "filesys/free-map.h"
+#include "filesys/inode.h"
 #include "filesys/filesys.h"
 #include "devices/input.h"
 #include <syscall-nr.h>
@@ -69,6 +71,17 @@ static void syscall_handler(struct intr_frame* f) {
   uint32_t* args = f->esp;
   check_buffer(args, 4);
   switch (args[0]) {
+    case SYS_FS_FREE:
+      f->eax = free_map_available();
+      break;
+    case SYS_INUMBER: {
+      check_buffer(args, 8);
+      lock_acquire(&process_fs_lock);
+      struct descriptor* d = descriptor((int)args[1]);
+      f->eax = d ? inode_get_inumber(file_get_inode(d->file)) : -1;
+      lock_release(&process_fs_lock);
+      break;
+    }
     case SYS_CACHE_RESET:
       cache_reset();
       break;
@@ -183,9 +196,10 @@ static void syscall_handler(struct intr_frame* f) {
           f->eax = file_length(d->file);
         else if (code == SYS_TELL)
           f->eax = file_tell(d->file);
-        else if (code == SYS_SEEK)
-          file_seek(d->file, args[2]);
-        else {
+        else if (code == SYS_SEEK) {
+          if (args[2] <= INT_MAX)
+            file_seek(d->file, args[2]);
+        } else {
           list_remove(&d->elem);
           file_close(d->file);
           free(d);

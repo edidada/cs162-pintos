@@ -31,6 +31,7 @@ enum {
   SYS_CACHE_RESET,
   SYS_CACHE_FLUSH,
   SYS_CACHE_STATS,
+  SYS_FS_FREE,
   SYS_FORK, /* Creates a copy of the process */
 
   /* Project 3 and optionally project 4. */

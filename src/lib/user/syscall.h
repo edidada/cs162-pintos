@@ -14,6 +14,7 @@ typedef int pid_t;
 void cache_reset(void);
 void cache_flush(void);
 void cache_stats(struct cache_stats*);
+unsigned fs_free_sectors(void);
 
 /* Synchronization Types */
 typedef char lock_t;

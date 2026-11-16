@@ -1,0 +1,11 @@
+use strict;
+use warnings;
+use tests::tests;
+our $test;
+my @output = read_text_file("$test.output");
+common_checks("run", @output);
+my $text = join("\n", @output);
+my ($initial, $recovered) = $text =~ /ROLLBACK free=(\d+) recovered=(\d+)/;
+fail "Space not reclaimed" unless defined($recovered) && $initial == $recovered;
+fail "Missing success" unless $text =~ /\(grow-rollback\) PASS/ && $text =~ /grow-rollback: exit\(0\)/;
+pass;

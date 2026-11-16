@@ -159,5 +159,6 @@ tid_t get_tid(void) { return syscall0(SYS_GET_TID); }
 
 pid_t fork(void) { return syscall0(SYS_FORK); }
 void cache_reset(void) { syscall0(SYS_CACHE_RESET); }
+unsigned fs_free_sectors(void) { return syscall0(SYS_FS_FREE); }
 void cache_flush(void) { syscall0(SYS_CACHE_FLUSH); }
 void cache_stats(struct cache_stats* result) { syscall1(SYS_CACHE_STATS, result); }

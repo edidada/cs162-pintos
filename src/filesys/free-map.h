@@ -10,6 +10,7 @@ void free_map_read(void);
 void free_map_create(void);
 void free_map_open(void);
 void free_map_close(void);
+size_t free_map_available(void);
 
 bool free_map_allocate(size_t, block_sector_t*);
 void free_map_release(block_sector_t, size_t);
