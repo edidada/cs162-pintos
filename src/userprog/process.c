@@ -205,17 +205,14 @@ pid_t process_execute(const char* command) {
     return pid;
   }
   child->pid = pid;
-  lock_acquire(&thread_current()->pcb->state_lock);
-  list_push_back(&thread_current()->pcb->children, &child->elem);
-  lock_release(&thread_current()->pcb->state_lock);
   sema_down(&child->loaded);
   if (!child->load_ok) {
-    lock_acquire(&thread_current()->pcb->state_lock);
-    list_remove(&child->elem);
-    lock_release(&thread_current()->pcb->state_lock);
     release_child(child);
     return TID_ERROR;
   }
+  lock_acquire(&thread_current()->pcb->state_lock);
+  list_push_back(&thread_current()->pcb->children, &child->elem);
+  lock_release(&thread_current()->pcb->state_lock);
   return pid;
 }
 static void start_process(void* arg) {
@@ -344,17 +341,14 @@ pid_t process_fork(struct intr_frame* frame) {
     return -1;
   }
   child->pid = pid;
-  lock_acquire(&thread_current()->pcb->state_lock);
-  list_push_back(&thread_current()->pcb->children, &child->elem);
-  lock_release(&thread_current()->pcb->state_lock);
   sema_down(&child->loaded);
   if (!child->load_ok) {
-    lock_acquire(&thread_current()->pcb->state_lock);
-    list_remove(&child->elem);
-    lock_release(&thread_current()->pcb->state_lock);
     release_child(child);
     return -1;
   }
+  lock_acquire(&thread_current()->pcb->state_lock);
+  list_push_back(&thread_current()->pcb->children, &child->elem);
+  lock_release(&thread_current()->pcb->state_lock);
   return pid;
 }
 
