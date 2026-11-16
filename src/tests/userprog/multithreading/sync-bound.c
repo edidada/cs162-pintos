@@ -28,5 +28,8 @@ void test_main(void) {
     sema_up(&semaphores[i]);
     sema_down(&semaphores[i]);
   }
+  /* Exit while owning a user lock: teardown must remove the TCB link before
+     freeing its kernel registration, including under priority scheduling. */
+  lock_acquire(&locks[0]);
   msg("PASS");
 }
