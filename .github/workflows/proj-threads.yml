@@ -29,7 +29,7 @@ jobs:
             make "tests/threads/$name.result"
             grep -qx PASS "tests/threads/$name.result"
           done
-          for name in lock-simple lock-init-fail lock-dbl-acq lock-dbl-rel lock-acq-fail sema-simple sema-init-fail sema-up-fail; do
+          for name in lock-simple lock-init-fail lock-dbl-acq lock-dbl-rel lock-acq-fail sema-simple sema-init-fail sema-up-fail sync-bound; do
             make "tests/userprog/multithreading/$name.result"
             grep -qx PASS "tests/userprog/multithreading/$name.result"
           done

@@ -5,6 +5,8 @@ tests/%.output: FILESYSSOURCE = --filesys-size=2
 tests/%.output: PUTFILES = $(filter-out kernel.bin loader.bin, $^)
 
 tests/userprog/multithreading_TESTS = tests/userprog/multithreading/lock-simple
+tests/userprog/multithreading_TESTS += tests/userprog/multithreading/sync-bound
+tests/userprog/multithreading/sync-bound_SRC = tests/userprog/multithreading/sync-bound.c
 tests/userprog/multithreading_TESTS += tests/userprog/multithreading/lock-init-fail
 tests/userprog/multithreading_TESTS += tests/userprog/multithreading/lock-dbl-acq
 tests/userprog/multithreading_TESTS += tests/userprog/multithreading/lock-dbl-rel
