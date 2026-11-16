@@ -36,13 +36,16 @@ jobs:
           p.write_text(s.replace(marker, replacement))
           p = Path('src/filesys/filesys.c')
           s = p.read_text()
+          start = s.index('bool filesys_create(')
+          end = s.index('/* Opens the file', start)
+          body = s[start:end]
           marker = '  dir_close(dir);\n\n  return success;'
-          assert s.count(marker) == 1
+          assert body.count(marker) == 1
           replacement = '''  dir_close(dir);
             extern int inode_fault_countdown;
             if (success && !strcmp(name, "memory")) inode_fault_countdown = 260;
             return success;'''
-          p.write_text(s.replace(marker, replacement))
+          p.write_text(s[:start] + body.replace(marker, replacement) + s[end:])
           PY
           git diff -- src/filesys/inode.c src/filesys/filesys.c > evidence/injection.patch
           export PATH="$PWD/src/utils:$PATH"
