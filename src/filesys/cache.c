@@ -18,10 +18,12 @@ static struct condition changed;
 static unsigned hand;
 static bool maintenance;
 static struct cache_stats stats;
+static uint64_t read_base, write_base;
 
 void cache_init(void) {
   lock_init(&directory_lock);
   cond_init(&changed);
+  block_get_stats(fs_device, &read_base, &write_base);
   for (unsigned i = 0; i < CACHE_SIZE; ++i)
     lock_init(&entries[i].data_lock);
 }
@@ -90,8 +92,6 @@ struct cache_entry* cache_get(block_sector_t sector, bool overwrite) {
     else
       memset(victim->data, 0, BLOCK_SECTOR_SIZE);
     lock_acquire(&directory_lock);
-    stats.writes += wrote;
-    stats.reads += !overwrite;
     victim->sector = sector;
     victim->valid = true;
     victim->busy = false;
@@ -155,21 +155,20 @@ static void maintain(bool invalidate) {
     cond_wait(&changed, &directory_lock);
   }
   lock_release(&directory_lock);
-  uint64_t writes = 0;
   for (unsigned i = 0; i < CACHE_SIZE; ++i) {
     struct cache_entry* e = &entries[i];
     if (e->valid && e->dirty) {
       block_write(fs_device, e->sector, e->data);
-      ++writes;
       e->dirty = false;
     }
     if (invalidate)
       e->valid = false;
   }
   lock_acquire(&directory_lock);
-  stats.writes += writes;
-  if (invalidate)
+  if (invalidate) {
     memset(&stats, 0, sizeof stats);
+    block_get_stats(fs_device, &read_base, &write_base);
+  }
   maintenance = false;
   cond_broadcast(&changed, &directory_lock);
   lock_release(&directory_lock);
@@ -179,5 +178,8 @@ void cache_reset(void) { maintain(true); }
 void cache_stats(struct cache_stats* result) {
   lock_acquire(&directory_lock);
   *result = stats;
+  block_get_stats(fs_device, &result->reads, &result->writes);
+  result->reads -= read_base;
+  result->writes -= write_base;
   lock_release(&directory_lock);
 }

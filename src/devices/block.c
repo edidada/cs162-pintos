@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "devices/ide.h"
 #include "threads/malloc.h"
+#include "threads/interrupt.h"
 
 /* A block device. */
 struct block {
@@ -54,9 +55,7 @@ void block_set_role(enum block_type role, struct block* block) {
 
 /* Returns the first block device in kernel probe order, or a
    null pointer if no block devices are registered. */
-struct block* block_first(void) {
-  return list_elem_to_block(list_begin(&all_blocks));
-}
+struct block* block_first(void) { return list_elem_to_block(list_begin(&all_blocks)); }
 
 /* Returns the block device following BLOCK in kernel probe
    order, or a null pointer if BLOCK is the last block device. */
@@ -97,7 +96,9 @@ static void check_sector(struct block* block, block_sector_t sector) {
 void block_read(struct block* block, block_sector_t sector, void* buffer) {
   check_sector(block, sector);
   block->ops->read(block->aux, sector, buffer);
+  enum intr_level old = intr_disable();
   block->read_cnt++;
+  intr_set_level(old);
 }
 
 /* Write sector SECTOR to BLOCK from BUFFER, which must contain
@@ -109,7 +110,17 @@ void block_write(struct block* block, block_sector_t sector, const void* buffer)
   check_sector(block, sector);
   ASSERT(block->type != BLOCK_FOREIGN);
   block->ops->write(block->aux, sector, buffer);
+  enum intr_level old = intr_disable();
   block->write_cnt++;
+  intr_set_level(old);
+}
+
+/* Snapshot completed device operations without torn 64-bit reads on x86. */
+void block_get_stats(struct block* block, uint64_t* reads, uint64_t* writes) {
+  enum intr_level old = intr_disable();
+  *reads = block->read_cnt;
+  *writes = block->write_cnt;
+  intr_set_level(old);
 }
 
 /* Returns the number of sectors in BLOCK. */
