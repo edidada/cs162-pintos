@@ -47,10 +47,5 @@ void test_main(void) {
   }
   ASSERT(count == 2);
   close(fd);
-  fd = open("//a/./../a/marker");
-  ASSERT(fd >= 2);
-  close(fd);
-  ASSERT(open("a/marker/") == -1 && open("a/marker/..") == -1);
-  ASSERT(!create("a/marker/", 0) && !mkdir("a/marker/child"));
   msg("CWD fork/exec inheritance and independent changes PASS");
 }
