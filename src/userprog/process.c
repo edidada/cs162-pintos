@@ -415,8 +415,15 @@ void process_exit(void) {
      If this happens, then an unfortuantely timed timer interrupt
      can try to activate the pagedir, but it is now freed memory */
   struct process* pcb_to_free = cur->pcb;
-  while (!list_empty(&pcb_to_free->user_sync))
-    free(list_entry(list_pop_front(&pcb_to_free->user_sync), struct user_sync, elem));
+  while (!list_empty(&pcb_to_free->user_sync)) {
+    struct user_sync* object =
+        list_entry(list_pop_front(&pcb_to_free->user_sync), struct user_sync, elem);
+    /* Remove ownership links before freeing nodes: later child-status lock
+       operations may still recompute this thread's effective priority. */
+    if (object->is_lock && lock_held_by_current_thread(&object->object.lock))
+      lock_release(&object->object.lock);
+    free(object);
+  }
   cur->pcb = NULL;
   free(pcb_to_free);
 
