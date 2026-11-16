@@ -5,10 +5,15 @@
 #include <debug.h>
 #include <pthread.h>
 #include <stdlib.h>
+#include <cache-stats.h>
 
 /* Process identifier. */
 typedef int pid_t;
-#define PID_ERROR ((pid_t)-1)
+#define PID_ERROR ((pid_t) - 1)
+
+void cache_reset(void);
+void cache_flush(void);
+void cache_stats(struct cache_stats*);
 
 /* Synchronization Types */
 typedef char lock_t;
@@ -16,7 +21,7 @@ typedef char sema_t;
 
 /* Map region identifier. */
 typedef int mapid_t;
-#define MAP_FAILED ((mapid_t)-1)
+#define MAP_FAILED ((mapid_t) - 1)
 
 /* Maximum characters in a filename written by readdir(). */
 #define READDIR_MAX_LEN 14

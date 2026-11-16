@@ -1,0 +1,10 @@
+use strict;
+use warnings;
+use tests::tests;
+our $test;
+my @output = read_text_file("$test.output");
+common_checks("run", @output);
+my $text = join("\n", @output);
+my ($writes) = $text =~ /CACHE MERGE writes=(\d+)/; fail "Bad write coalescing" unless defined($writes) && $writes >= 128 && $writes <= 140;
+fail "Missing success/clean exit" unless $text =~ /\(cache-merge\) PASS/ && $text =~ /cache-merge: exit\(0\)/;
+pass;

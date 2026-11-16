@@ -28,7 +28,10 @@ enum {
   SYS_SEMA_DOWN,    /* Downs a semaphore */
   SYS_SEMA_UP,      /* Ups a semaphore */
   SYS_GET_TID,      /* Gets TID of the current thread */
-  SYS_FORK,         /* Creates a copy of the process */
+  SYS_CACHE_RESET,
+  SYS_CACHE_FLUSH,
+  SYS_CACHE_STATS,
+  SYS_FORK, /* Creates a copy of the process */
 
   /* Project 3 and optionally project 4. */
   SYS_MMAP,   /* Map a file into memory. */

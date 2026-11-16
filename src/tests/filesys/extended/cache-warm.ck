@@ -1,0 +1,10 @@
+use strict;
+use warnings;
+use tests::tests;
+our $test;
+my @output = read_text_file("$test.output");
+common_checks("run", @output);
+my $text = join("\n", @output);
+my ($cold, $warm) = $text =~ /CACHE WARM cold=(\d+) warm=(\d+)/; fail "Bad cache hit improvement" unless defined($warm) && $cold > 0 && $warm == 0;
+fail "Missing success/clean exit" unless $text =~ /\(cache-warm\) PASS/ && $text =~ /cache-warm: exit\(0\)/;
+pass;

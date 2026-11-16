@@ -3,6 +3,7 @@
 #include <limits.h>
 #include "threads/malloc.h"
 #include "filesys/file.h"
+#include "filesys/cache.h"
 #include "filesys/filesys.h"
 #include "devices/input.h"
 #include <syscall-nr.h>
@@ -68,6 +69,17 @@ static void syscall_handler(struct intr_frame* f) {
   uint32_t* args = f->esp;
   check_buffer(args, 4);
   switch (args[0]) {
+    case SYS_CACHE_RESET:
+      cache_reset();
+      break;
+    case SYS_CACHE_FLUSH:
+      cache_flush();
+      break;
+    case SYS_CACHE_STATS:
+      check_buffer(args, 8);
+      check_writable((void*)args[1], sizeof(struct cache_stats));
+      cache_stats((struct cache_stats*)args[1]);
+      break;
     case SYS_HALT:
       shutdown_power_off();
       break;
