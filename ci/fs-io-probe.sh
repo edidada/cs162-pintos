@@ -120,8 +120,11 @@ from pathlib import Path
 import sys
 mode, status = sys.argv[1], int(sys.argv[2])
 s = (Path('../../../evidence') / ('negative-' + mode + '.output')).read_text()
-assert status != 0 and 'TIMEOUT' in s and 'IO A waiting' in s
+# src/utils/pintos deliberately exits 0 after its wall-clock timeout.
+# Require the diagnostic and blocked progress, rather than treating exit 0 as success.
+assert status == 0 and 'TIMEOUT after' in s and 'IO A waiting' in s
 assert 'worker B ready to read' in s and 'IO B progressed' not in s and 'PANIC' not in s
+assert 'Powering off' not in s and 'IO gate ' + mode + ' PASS' not in s
 (Path('../../../evidence') / ('negative-' + mode + '.txt')).write_text('EXPECTED TIMEOUT: global read serialization detected\n')
 PY
 done
