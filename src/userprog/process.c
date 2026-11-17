@@ -21,7 +21,6 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-struct lock process_fs_lock;
 struct child_status {
   struct list_elem elem;
   pid_t pid;
@@ -69,7 +68,6 @@ void userprog_init(void) {
     t->pcb->next_fd = 2;
     t->pcb->exit_status = -1;
   }
-  lock_init(&process_fs_lock);
 
   /* Kill the kernel if we did not succeed */
   ASSERT(success);
@@ -110,9 +108,7 @@ pid_t process_execute(const char* command) {
     ++n;
   }
   name[n] = 0;
-  lock_acquire(&process_fs_lock);
   launch->cwd = filesys_cwd_reopen();
-  lock_release(&process_fs_lock);
   if (launch->cwd == NULL) {
     palloc_free_page(copy);
     free(child);
@@ -121,9 +117,7 @@ pid_t process_execute(const char* command) {
   }
   pid_t pid = thread_create(name, PRI_DEFAULT, start_process, launch);
   if (pid == TID_ERROR) {
-    lock_acquire(&process_fs_lock);
     dir_close(launch->cwd);
-    lock_release(&process_fs_lock);
     palloc_free_page(copy);
     free(launch);
     free(child);
@@ -164,9 +158,7 @@ static void start_process(void* arg) {
     t->pcb = pcb;
   }
   if (!pcb) {
-    lock_acquire(&process_fs_lock);
     dir_close(launch.cwd);
-    lock_release(&process_fs_lock);
   }
   struct intr_frame frame;
   memset(&frame, 0, sizeof frame);
@@ -174,9 +166,7 @@ static void start_process(void* arg) {
   frame.cs = SEL_UCSEG;
   frame.eflags = FLAG_IF | FLAG_MBS;
   if (success) {
-    lock_acquire(&process_fs_lock);
     success = load(argv[0], &frame.eip, &frame.esp);
-    lock_release(&process_fs_lock);
     if (success)
       success = argument_stack(&frame.esp, argv, argc);
   }
@@ -217,7 +207,6 @@ static void start_fork(void* arg) {
       success = pagedir_copy(pcb->pagedir, parent->pagedir);
     }
     if (success) {
-      lock_acquire(&process_fs_lock);
       pcb->cwd = parent->cwd ? dir_reopen(parent->cwd) : dir_open_root();
       success = pcb->cwd != NULL;
       pcb->executable = file_share(parent->executable);
@@ -233,7 +222,6 @@ static void start_fork(void* arg) {
         copy->file = file_share(old->file);
         list_push_back(&pcb->descriptors, &copy->elem);
       }
-      lock_release(&process_fs_lock);
     }
   }
   struct intr_frame frame = launch->frame;
@@ -319,7 +307,6 @@ void process_exit(void) {
     NOT_REACHED();
   }
   int status = cur->pcb->exit_status;
-  lock_acquire(&process_fs_lock);
   while (!list_empty(&cur->pcb->descriptors)) {
     struct descriptor* d =
         list_entry(list_pop_front(&cur->pcb->descriptors), struct descriptor, elem);
@@ -328,7 +315,6 @@ void process_exit(void) {
   }
   file_close(cur->pcb->executable);
   dir_close(cur->pcb->cwd);
-  lock_release(&process_fs_lock);
   printf("%s: exit(%d)\n", cur->pcb->process_name, status);
   while (!list_empty(&cur->pcb->children)) {
     struct child_status* child =

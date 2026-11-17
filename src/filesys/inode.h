@@ -16,6 +16,8 @@ void inode_set_directory(block_sector_t);
 bool inode_is_dir(const struct inode*);
 bool inode_is_removed(const struct inode*);
 int inode_open_count(const struct inode*);
+void inode_dir_lock(struct inode*);
+void inode_dir_unlock(struct inode*);
 struct inode* inode_open(block_sector_t);
 struct inode* inode_reopen(struct inode*);
 block_sector_t inode_get_inumber(const struct inode*);

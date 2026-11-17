@@ -29,6 +29,7 @@ struct inode {
   bool removed, loading, directory;
   off_t length;
   struct rw_lock growth_lock;
+  struct lock directory_lock;
 };
 struct allocation {
   struct list_elem elem;
@@ -202,6 +203,7 @@ struct inode* inode_open(block_sector_t sector) {
   inode->open_cnt = 1;
   inode->loading = true;
   rw_lock_init(&inode->growth_lock);
+  lock_init(&inode->directory_lock);
   list_push_front(&open_inodes, &inode->elem);
   lock_release(&open_lock);
   struct cache_entry* entry = cache_get(sector, false);
@@ -348,3 +350,6 @@ off_t inode_length(const struct inode* inode) {
   rw_lock_release(lock, RW_READER);
   return length;
 }
+
+void inode_dir_lock(struct inode* inode) { lock_acquire(&inode->directory_lock); }
+void inode_dir_unlock(struct inode* inode) { lock_release(&inode->directory_lock); }

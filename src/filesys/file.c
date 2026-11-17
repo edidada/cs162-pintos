@@ -3,9 +3,12 @@
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 #include "threads/malloc.h"
+#include "threads/synch.h"
+#include "threads/interrupt.h"
 
 /* An open file. */
 struct file {
+  struct lock position_lock;
   struct inode* inode; /* File's inode. */
   off_t pos;           /* Current position. */
   unsigned references;
@@ -18,6 +21,7 @@ struct file {
 struct file* file_open(struct inode* inode) {
   struct file* file = calloc(1, sizeof *file);
   if (inode != NULL && file != NULL) {
+    lock_init(&file->position_lock);
     file->inode = inode;
     file->references = 1;
     file->pos = 0;
@@ -36,7 +40,12 @@ struct file* file_reopen(struct file* file) { return file_open(inode_reopen(file
 
 /* Closes FILE. */
 void file_close(struct file* file) {
-  if (file != NULL && --file->references == 0) {
+  if (file == NULL)
+    return;
+  enum intr_level old = intr_disable();
+  bool last = --file->references == 0;
+  intr_set_level(old);
+  if (last) {
     file_allow_write(file);
     inode_close(file->inode);
     free(file);
@@ -52,8 +61,10 @@ struct inode* file_get_inode(struct file* file) { return file->inode; }
    which may be less than SIZE if end of file is reached.
    Advances FILE's position by the number of bytes read. */
 off_t file_read(struct file* file, void* buffer, off_t size) {
+  lock_acquire(&file->position_lock);
   off_t bytes_read = inode_read_at(file->inode, buffer, size, file->pos);
   file->pos += bytes_read;
+  lock_release(&file->position_lock);
   return bytes_read;
 }
 
@@ -74,8 +85,10 @@ off_t file_read_at(struct file* file, void* buffer, off_t size, off_t file_ofs) 
    not yet implemented.)
    Advances FILE's position by the number of bytes read. */
 off_t file_write(struct file* file, const void* buffer, off_t size) {
+  lock_acquire(&file->position_lock);
   off_t bytes_written = inode_write_at(file->inode, buffer, size, file->pos);
   file->pos += bytes_written;
+  lock_release(&file->position_lock);
   return bytes_written;
 }
 
@@ -94,10 +107,12 @@ off_t file_write_at(struct file* file, const void* buffer, off_t size, off_t fil
    until file_allow_write() is called or FILE is closed. */
 void file_deny_write(struct file* file) {
   ASSERT(file != NULL);
+  lock_acquire(&file->position_lock);
   if (!file->deny_write) {
     file->deny_write = true;
     inode_deny_write(file->inode);
   }
+  lock_release(&file->position_lock);
 }
 
 /* Re-enables write operations on FILE's underlying inode.
@@ -105,10 +120,12 @@ void file_deny_write(struct file* file) {
    same inode open.) */
 void file_allow_write(struct file* file) {
   ASSERT(file != NULL);
+  lock_acquire(&file->position_lock);
   if (file->deny_write) {
     file->deny_write = false;
     inode_allow_write(file->inode);
   }
+  lock_release(&file->position_lock);
 }
 
 /* Returns the size of FILE in bytes. */
@@ -122,23 +139,33 @@ off_t file_length(struct file* file) {
 void file_seek(struct file* file, off_t new_pos) {
   ASSERT(file != NULL);
   ASSERT(new_pos >= 0);
+  lock_acquire(&file->position_lock);
   file->pos = new_pos;
+  lock_release(&file->position_lock);
 }
 
 /* Returns the current position in FILE as a byte offset from the
    start of the file. */
 off_t file_tell(struct file* file) {
   ASSERT(file != NULL);
-  return file->pos;
+  lock_acquire(&file->position_lock);
+  off_t position = file->pos;
+  lock_release(&file->position_lock);
+  return position;
 }
 
-/* Called with the Project1 filesystem lock held. Shares offset and deny state. */
+/* Each caller already owns a live reference. Sharing preserves offset/deny state. */
 struct file* file_share(struct file* file) {
+  enum intr_level old = intr_disable();
   if (file)
     ++file->references;
+  intr_set_level(old);
   return file;
 }
 
 bool file_readdir(struct file* file, char name[NAME_MAX + 1]) {
-  return dir_read_next(file->inode, &file->pos, name);
+  lock_acquire(&file->position_lock);
+  bool found = dir_read_next(file->inode, &file->pos, name);
+  lock_release(&file->position_lock);
+  return found;
 }

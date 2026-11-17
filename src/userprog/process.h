@@ -30,7 +30,6 @@ struct descriptor {
   struct list_elem elem;
 };
 struct child_status;
-extern struct lock process_fs_lock;
 
 struct process {
   struct dir* cwd;

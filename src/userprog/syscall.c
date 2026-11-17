@@ -77,9 +77,7 @@ static void syscall_handler(struct intr_frame* f) {
       check_buffer(args, 8);
       const char* path = (const char*)args[1];
       check_string(path);
-      lock_acquire(&process_fs_lock);
       f->eax = args[0] == SYS_CHDIR ? filesys_chdir(path) : filesys_mkdir(path);
-      lock_release(&process_fs_lock);
       break;
     }
     case SYS_ISDIR:
@@ -88,11 +86,9 @@ static void syscall_handler(struct intr_frame* f) {
       check_buffer(args, code == SYS_READDIR ? 12 : 8);
       if (code == SYS_READDIR)
         check_writable((void*)args[2], NAME_MAX + 1);
-      lock_acquire(&process_fs_lock);
       struct descriptor* d = descriptor((int)args[1]);
       f->eax = d && inode_is_dir(file_get_inode(d->file)) &&
                (code == SYS_ISDIR || file_readdir(d->file, (char*)args[2]));
-      lock_release(&process_fs_lock);
       break;
     }
     case SYS_FS_FREE:
@@ -100,10 +96,8 @@ static void syscall_handler(struct intr_frame* f) {
       break;
     case SYS_INUMBER: {
       check_buffer(args, 8);
-      lock_acquire(&process_fs_lock);
       struct descriptor* d = descriptor((int)args[1]);
       f->eax = d ? inode_get_inumber(file_get_inode(d->file)) : -1;
-      lock_release(&process_fs_lock);
       break;
     }
     case SYS_CACHE_RESET:
@@ -154,7 +148,6 @@ static void syscall_handler(struct intr_frame* f) {
       check_buffer(args, code == SYS_CREATE ? 12 : 8);
       const char* name = (const char*)args[1];
       check_string(name);
-      lock_acquire(&process_fs_lock);
       if (code == SYS_CREATE)
         f->eax = args[2] <= INT_MAX && filesys_create(name, args[2]);
       else if (code == SYS_REMOVE)
@@ -174,7 +167,6 @@ static void syscall_handler(struct intr_frame* f) {
           f->eax = d->fd;
         }
       }
-      lock_release(&process_fs_lock);
       break;
     }
     case SYS_READ:
@@ -196,13 +188,11 @@ static void syscall_handler(struct intr_frame* f) {
         putbuf(buffer, size);
         f->eax = size;
       } else {
-        lock_acquire(&process_fs_lock);
         struct descriptor* d = descriptor(fd);
         if (!d || inode_is_dir(file_get_inode(d->file)))
           f->eax = -1;
         else
           f->eax = reading ? file_read(d->file, buffer, size) : file_write(d->file, buffer, size);
-        lock_release(&process_fs_lock);
       }
       break;
     }
@@ -212,7 +202,6 @@ static void syscall_handler(struct intr_frame* f) {
     case SYS_CLOSE: {
       unsigned code = args[0];
       check_buffer(args, code == SYS_SEEK ? 12 : 8);
-      lock_acquire(&process_fs_lock);
       struct descriptor* d = descriptor((int)args[1]);
       f->eax = -1;
       if (d) {
@@ -229,7 +218,6 @@ static void syscall_handler(struct intr_frame* f) {
           free(d);
         }
       }
-      lock_release(&process_fs_lock);
       break;
     }
     default:

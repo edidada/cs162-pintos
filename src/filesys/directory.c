@@ -100,11 +100,13 @@ bool dir_lookup(const struct dir* dir, const char* name, struct inode** inode) {
   ASSERT(dir != NULL);
   ASSERT(name != NULL);
 
+  inode_dir_lock(dir->inode);
   if (!inode_is_removed(dir->inode) && lookup(dir, name, &e, NULL))
     *inode = inode_open(e.inode_sector);
   else
     *inode = NULL;
 
+  inode_dir_unlock(dir->inode);
   return *inode != NULL;
 }
 
@@ -122,9 +124,10 @@ bool dir_add(struct dir* dir, const char* name, block_sector_t inode_sector) {
   ASSERT(dir != NULL);
   ASSERT(name != NULL);
 
+  inode_dir_lock(dir->inode);
   /* Check NAME for validity. */
   if (*name == '\0' || strlen(name) > NAME_MAX || inode_is_removed(dir->inode))
-    return false;
+    goto done;
 
   /* Check that NAME is not in use. */
   if (lookup(dir, name, NULL, NULL))
@@ -148,6 +151,7 @@ bool dir_add(struct dir* dir, const char* name, block_sector_t inode_sector) {
   success = inode_write_at(dir->inode, &e, sizeof e, ofs) == sizeof e;
 
 done:
+  inode_dir_unlock(dir->inode);
   return success;
 }
 
@@ -168,10 +172,12 @@ bool dir_remove(struct dir* dir, const char* name) {
   struct inode* inode = NULL;
   bool success = false;
   off_t ofs;
+  bool child_locked = false;
 
   ASSERT(dir != NULL);
   ASSERT(name != NULL);
 
+  inode_dir_lock(dir->inode);
   if (!strcmp(name, ".") || !strcmp(name, "..") || inode_is_removed(dir->inode))
     goto done;
   /* Find directory entry. */
@@ -182,6 +188,10 @@ bool dir_remove(struct dir* dir, const char* name) {
   inode = inode_open(e.inode_sector);
   if (inode == NULL)
     goto done;
+  if (inode_is_dir(inode)) {
+    inode_dir_lock(inode); /* Parent -> child; dot aliases cannot be removed. */
+    child_locked = true;
+  }
   if (inode_get_inumber(inode) == ROOT_DIR_SECTOR ||
       (inode_is_dir(inode) && (inode_open_count(inode) > 1 || !empty_directory(inode))))
     goto done;
@@ -196,6 +206,9 @@ bool dir_remove(struct dir* dir, const char* name) {
   success = true;
 
 done:
+  if (child_locked)
+    inode_dir_unlock(inode);
+  inode_dir_unlock(dir->inode);
   inode_close(inode);
   return success;
 }
@@ -204,16 +217,23 @@ done:
    NAME.  Returns true if successful, false if the directory
    contains no more entries. */
 bool dir_read_next(struct inode* inode, off_t* position, char name[NAME_MAX + 1]) {
-  if (!inode_is_dir(inode) || inode_is_removed(inode))
+  if (!inode_is_dir(inode))
     return false;
+  inode_dir_lock(inode);
+  if (inode_is_removed(inode)) {
+    inode_dir_unlock(inode);
+    return false;
+  }
   struct dir_entry e;
   while (inode_read_at(inode, &e, sizeof e, *position) == sizeof e) {
     *position += sizeof e;
     if (e.in_use && strcmp(e.name, ".") && strcmp(e.name, "..")) {
       strlcpy(name, e.name, NAME_MAX + 1);
+      inode_dir_unlock(inode);
       return true;
     }
   }
+  inode_dir_unlock(inode);
   return false;
 }
 bool dir_readdir(struct dir* dir, char name[NAME_MAX + 1]) {
